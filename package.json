@@ -1,0 +1,15 @@
+{
+  "name": "amar-customer-order-portal",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Amar Industries customer order portal, admin ERP panel, email templates, and Supabase functions.",
+  "scripts": {
+    "install:all": "npm --prefix admin install && npm --prefix customer-portal install && npm --prefix emails install",
+    "admin:dev": "npm --prefix admin run dev",
+    "customer:dev": "npm --prefix customer-portal run dev",
+    "emails:dev": "npm --prefix emails run dev",
+    "admin:build": "npm --prefix admin run build",
+    "customer:build": "npm --prefix customer-portal run build",
+    "build": "npm run admin:build && npm run customer:build"
+  }
+}
