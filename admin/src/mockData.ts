@@ -238,6 +238,15 @@ const getStorage = (key: string, defaultData: any) => {
   return item ? JSON.parse(item) : defaultData;
 };
 
+const mergeOrdersById = (storedOrders: Order[], seedOrders: Order[]) => {
+  const seen = new Set<string>();
+  return [...storedOrders, ...seedOrders].filter((order) => {
+    if (seen.has(order.id)) return false;
+    seen.add(order.id);
+    return true;
+  });
+};
+
 // Initialize mock DB
 export const initializeMockDB = () => {
   if (!localStorage.getItem('amar_categories')) {
@@ -250,9 +259,15 @@ export const initializeMockDB = () => {
   }
   const allSeedOrders = [...INITIAL_ORDERS, ...DEMO_ANALYTICS_ORDERS];
   const storedOrders = getStorage('orders', [] as Order[]);
-  if (!localStorage.getItem('amar_orders') || storedOrders.length < allSeedOrders.length) {
+  if (!localStorage.getItem('amar_orders')) {
     setStorage('orders', allSeedOrders);
     localStorage.setItem('amar_orders_version', 'analytics-v1');
+  } else {
+    const mergedOrders = mergeOrdersById(storedOrders, allSeedOrders);
+    if (mergedOrders.length !== storedOrders.length) {
+      setStorage('orders', mergedOrders);
+      localStorage.setItem('amar_orders_version', 'analytics-v1');
+    }
   }
   if (!localStorage.getItem('amar_users')) {
     setStorage('users', SAMPLE_USERS);
