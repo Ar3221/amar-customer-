@@ -24,6 +24,7 @@ export interface Category {
   slug: string;
   description: string;
   imageUrl: string;
+  catalogUrl?: string;
 }
 
 export interface VolumePriceTier {
@@ -68,6 +69,7 @@ export interface Product {
   views: number;
   ordersCount: number;
   createdAt: string;
+  brochureUrl?: string;
 }
 
 export type OrderStatus = 

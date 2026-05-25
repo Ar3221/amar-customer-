@@ -18,7 +18,7 @@ import {
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { jsPDF } from 'jspdf';
-import { db, initializeMockDB } from './mockData';
+import { db, initializeMockDB, requestOrdersFromCustomerPortal } from './mockData';
 import type { Order, Product, Category, User as SystemUser, OrderStatus } from './types';
 import { EmailPreferences } from './components/EmailPreferences';
 import {
@@ -53,18 +53,6 @@ export default function App() {
   const [staffAccessPassword, setStaffAccessPassword] = useState('');
   const [staffAccessError, setStaffAccessError] = useState<string | null>(null);
 
-  // Sync Profiles for Demo toggling (commented out to satisfy unused local rules)
-  /*
-  const adminProfiles = [
-    SAMPLE_SUPERVISOR,
-    SAMPLE_ADMIN
-  ];
-  */
-
-  useEffect(() => {
-    refreshState();
-  }, []);
-
   const refreshState = () => {
     setOrders(db.getOrders());
     setProducts(db.getProducts());
@@ -78,6 +66,47 @@ export default function App() {
       localStorage.setItem('amar_session', JSON.stringify(updatedUser));
     }
   };
+
+  // Sync Profiles for Demo toggling (commented out to satisfy unused local rules)
+  /*
+  const adminProfiles = [
+    SAMPLE_SUPERVISOR,
+    SAMPLE_ADMIN
+  ];
+  */
+
+  useEffect(() => { refreshState(); requestOrdersFromCustomerPortal(); }, []);
+
+  useEffect(() => {
+    const refreshSyncedOrders = () => refreshState();
+    const refreshStorageOrders = (event: StorageEvent) => {
+      if (event.key === 'amar_orders') refreshState();
+    };
+
+    window.addEventListener('amar-orders-updated', refreshSyncedOrders);
+    window.addEventListener('storage', refreshStorageOrders);
+
+    const handleSyncMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'AMAR_ORDER_SYNC_RESPONSE') {
+        const newOrders = event.data.orders;
+        if (newOrders && Array.isArray(newOrders)) {
+          localStorage.setItem('amar_orders', JSON.stringify(newOrders));
+          refreshState();
+        }
+      }
+    };
+    window.addEventListener('message', handleSyncMessage);
+
+    // Periodic request to sync orders from customer portal
+    const intervalId = setInterval(() => { requestOrdersFromCustomerPortal(); }, 5000);
+
+    return () => {
+      window.removeEventListener('amar-orders-updated', refreshSyncedOrders);
+      window.removeEventListener('storage', refreshStorageOrders);
+      window.removeEventListener('message', handleSyncMessage);
+      clearInterval(intervalId);
+    };
+  }, []);
 
   const handleProfileSwitch = (roleName: string) => {
     const target = db.getUsers().find(p => p.role === roleName) || (roleName === 'admin' ? SAMPLE_ADMIN : SAMPLE_SUPERVISOR);
@@ -169,26 +198,26 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-industrial-950 bg-grid-pattern text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50 bg-grid-pattern text-slate-100 flex flex-col font-sans">
       
       {/* GLOBAL BANNER */}
-      <div className="bg-slate-900 border-b border-industrial-800 px-6 py-2 flex justify-between items-center text-xs text-slate-400">
+      <div className="bg-white border-b border-slate-200 px-6 py-2 flex justify-between items-center text-xs text-slate-500">
         <div className="flex items-center gap-2">
-          <Layers className="w-3.5 h-3.5 text-brand-cyan animate-pulse" />
+          <Layers className="w-3.5 h-3.5 text-brand-green animate-pulse" />
           <span className="font-mono-custom">AMAR-ERP Executive Control Panel v3.5 (Secure Terminal Mode)</span>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-slate-500">Connected Identity:</span>
-          <div className="flex bg-industrial-950 rounded border border-industrial-800 p-0.5">
+          <div className="flex bg-slate-50 rounded border border-slate-200 p-0.5">
             <button 
               onClick={() => handleProfileSwitch('supervisor')}
-              className={`px-2 py-0.5 rounded transition ${currentUser.role === 'supervisor' ? 'bg-brand-cyan/20 text-brand-cyan font-bold' : 'hover:text-slate-200'}`}
+              className={`px-2 py-0.5 rounded transition ${currentUser.role === 'supervisor' ? 'bg-brand-green/20 text-brand-green font-bold' : 'hover:text-slate-700'}`}
             >
               Supervisor (Rahul)
             </button>
             <button 
               onClick={() => handleProfileSwitch('admin')}
-              className={`px-2 py-0.5 rounded transition ${currentUser.role === 'admin' ? 'bg-brand-orange/20 text-brand-orange font-bold' : 'hover:text-slate-200'}`}
+              className={`px-2 py-0.5 rounded transition ${currentUser.role === 'admin' ? 'bg-brand-orange/20 text-brand-orange font-bold' : 'hover:text-slate-700'}`}
             >
               Admin (Amarjit)
             </button>
@@ -199,12 +228,12 @@ export default function App() {
       <div className="flex-1 flex flex-col md:flex-row">
         
         {/* SIDEBAR NAVIGATION CONTROLS */}
-        <aside className="w-full md:w-64 bg-slate-900/40 border-r border-industrial-800 p-6 flex flex-col gap-8">
+        <aside className="w-full md:w-64 bg-white/40 border-r border-slate-200 p-6 flex flex-col gap-8">
           <div>
-            <h1 className="font-black text-lg tracking-wider bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent uppercase leading-none">
+            <h1 className="font-black text-lg tracking-wider bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent uppercase leading-none">
               AMAR ERP SYSTEM
             </h1>
-            <span className="text-[10px] tracking-widest text-brand-cyan uppercase font-bold font-mono-custom block mt-1">
+            <span className="text-[10px] tracking-widest text-brand-green uppercase font-bold font-mono-custom block mt-1">
               AMAR INDUSTRIES LTD
             </span>
           </div>
@@ -212,44 +241,44 @@ export default function App() {
           <nav className="flex flex-col gap-1.5 flex-1">
             <button 
               onClick={() => { setActiveMenu('dashboard'); setSelectedOrder(null); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'dashboard' ? 'bg-brand-cyan/10 border-l-2 border-brand-cyan text-brand-cyan' : 'hover:bg-slate-850/50 text-slate-400 hover:text-slate-200'}`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'dashboard' ? 'bg-brand-green/10 border-l-2 border-brand-green text-brand-green' : 'hover:bg-slate-50/50 text-slate-500 hover:text-slate-700'}`}
             >
               <TrendingUp className="w-4 h-4" /> Overview Dashboard
             </button>
             <button 
               onClick={() => { setActiveMenu('orders'); setSelectedOrder(null); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'orders' ? 'bg-brand-cyan/10 border-l-2 border-brand-cyan text-brand-cyan' : 'hover:bg-slate-850/50 text-slate-400 hover:text-slate-200'}`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'orders' ? 'bg-brand-green/10 border-l-2 border-brand-green text-brand-green' : 'hover:bg-slate-50/50 text-slate-500 hover:text-slate-700'}`}
             >
               <FileText className="w-4 h-4" /> Order Pipelines ({pendingInquiries.length})
             </button>
             <button 
               onClick={() => { setActiveMenu('products'); setSelectedOrder(null); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'products' ? 'bg-brand-cyan/10 border-l-2 border-brand-cyan text-brand-cyan' : 'hover:bg-slate-850/50 text-slate-400 hover:text-slate-200'}`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'products' ? 'bg-brand-green/10 border-l-2 border-brand-green text-brand-green' : 'hover:bg-slate-50/50 text-slate-500 hover:text-slate-700'}`}
             >
               <Package className="w-4 h-4" /> Product Catalog
             </button>
             <button 
               onClick={() => { setActiveMenu('inventory'); setSelectedOrder(null); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'inventory' ? 'bg-brand-cyan/10 border-l-2 border-brand-cyan text-brand-cyan' : 'hover:bg-slate-850/50 text-slate-400 hover:text-slate-200'}`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'inventory' ? 'bg-brand-green/10 border-l-2 border-brand-green text-brand-green' : 'hover:bg-slate-50/50 text-slate-500 hover:text-slate-700'}`}
             >
               <Box className="w-4 h-4" /> Stocks & Warehouses
             </button>
             <button 
               onClick={() => { setActiveMenu('analytics'); setSelectedOrder(null); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'analytics' ? 'bg-brand-cyan/10 border-l-2 border-brand-cyan text-brand-cyan' : 'hover:bg-slate-850/50 text-slate-400 hover:text-slate-200'}`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'analytics' ? 'bg-brand-green/10 border-l-2 border-brand-green text-brand-green' : 'hover:bg-slate-50/50 text-slate-500 hover:text-slate-700'}`}
             >
               <BarChart2 className="w-4 h-4" /> SLA Charts & Analytics
             </button>
             <button 
               onClick={() => { setActiveMenu('exports'); setSelectedOrder(null); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'exports' ? 'bg-brand-cyan/10 border-l-2 border-brand-cyan text-brand-cyan' : 'hover:bg-slate-850/50 text-slate-400 hover:text-slate-200'}`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'exports' ? 'bg-brand-green/10 border-l-2 border-brand-green text-brand-green' : 'hover:bg-slate-50/50 text-slate-500 hover:text-slate-700'}`}
             >
               <Download className="w-4 h-4" /> Report Export Center
             </button>
             {currentUser.role === 'admin' && (
               <button 
                 onClick={requestStaffManagementAccess}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'staff' ? 'bg-brand-cyan/10 border-l-2 border-brand-cyan text-brand-cyan' : 'hover:bg-slate-850/50 text-slate-400 hover:text-slate-200'}`}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition ${activeMenu === 'staff' ? 'bg-brand-green/10 border-l-2 border-brand-green text-brand-green' : 'hover:bg-slate-50/50 text-slate-500 hover:text-slate-700'}`}
               >
                 <Users className="w-4 h-4" /> Staff Directory
               </button>
@@ -257,15 +286,15 @@ export default function App() {
           </nav>
 
           {/* User Display Info */}
-          <div className="p-4 bg-industrial-900 border border-industrial-800 rounded-xl space-y-2">
+          <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-2">
             <span className="text-[9px] text-slate-500 uppercase tracking-widest block font-bold">Authorized Session</span>
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 font-mono-custom text-xs">
+              <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-800 font-mono-custom text-xs">
                 {currentUser.fullName[0]}
               </div>
               <div className="text-left">
-                <p className="text-xs font-bold text-slate-200 leading-tight truncate max-w-[120px]">{currentUser.fullName.split(' ')[0]}</p>
-                <span className="text-[8px] text-brand-cyan font-mono-custom uppercase tracking-wider block">{currentUser.role}</span>
+                <p className="text-xs font-bold text-slate-700 leading-tight truncate max-w-[120px]">{currentUser.fullName.split(' ')[0]}</p>
+                <span className="text-[8px] text-brand-green font-mono-custom uppercase tracking-wider block">{currentUser.role}</span>
               </div>
             </div>
             <button
@@ -342,12 +371,12 @@ export default function App() {
 
       {isStaffAccessPromptOpen && currentUser.role === 'admin' && (
         <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-          <div className="glass-panel-glow bg-slate-950/95 border border-industrial-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col p-6 space-y-5">
+          <div className="glass-panel-glow bg-slate-50/95 border border-slate-200 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col p-6 space-y-5">
             <div className="text-center space-y-2.5">
               <div className="inline-flex p-3 bg-red-950/20 border border-red-500/20 rounded-2xl text-brand-orange animate-pulse">
                 <ShieldAlert className="w-6 h-6" />
               </div>
-              <h4 className="text-sm font-black uppercase text-white tracking-widest">
+              <h4 className="text-sm font-black uppercase text-slate-900 tracking-widest">
                 Supervisor Management Locked
               </h4>
               <p className="text-[10px] text-slate-500 font-mono-custom">
@@ -364,7 +393,7 @@ export default function App() {
                   value={staffAccessPassword}
                   onChange={(e) => setStaffAccessPassword(e.target.value)}
                   placeholder="Confirm password to continue"
-                  className="w-full text-xs p-3 rounded-lg bg-industrial-950 border border-industrial-850 text-slate-200 focus:border-brand-orange outline-none transition"
+                  className="w-full text-xs p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-orange outline-none transition"
                 />
               </div>
 
@@ -378,13 +407,13 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => { setIsStaffAccessPromptOpen(false); setStaffAccessPassword(''); setStaffAccessError(null); }}
-                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 rounded-lg text-xs font-bold text-slate-350 transition cursor-pointer"
+                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-750 border border-slate-700/50 rounded-lg text-xs font-bold text-slate-800 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 bg-brand-orange hover:bg-orange-500 text-white text-xs font-black uppercase tracking-wider rounded-lg shadow-lg shadow-brand-orange/15 transition cursor-pointer"
+                  className="flex-1 py-2 bg-brand-orange hover:bg-orange-500 text-slate-900 text-xs font-black uppercase tracking-wider rounded-lg shadow-lg shadow-brand-orange/15 transition cursor-pointer"
                 >
                   Unlock
                 </button>
@@ -430,20 +459,20 @@ function DashboardView({
     <div className="space-y-6 animate-fade-in">
       
       {/* AI INDUSTRIAL LOG ADVISOR BANNER */}
-      <div className="glass-panel-glow border border-brand-cyan/30 rounded-2xl p-5 space-y-3 relative overflow-hidden bg-slate-900/60">
+      <div className="glass-panel-glow border border-brand-green/30 rounded-2xl p-5 space-y-3 relative overflow-hidden bg-white/60">
         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-          <Layers className="w-36 h-36 text-brand-cyan" />
+          <Layers className="w-36 h-36 text-brand-green" />
         </div>
         
         <div className="flex items-center gap-2">
-          <RefreshCw className="w-4 h-4 text-brand-cyan animate-spin-slow" />
-          <h4 className="text-xs font-black uppercase text-brand-cyan tracking-widest font-mono-custom">AMAR-AI Manufacturing & SLA Scheduler</h4>
+          <RefreshCw className="w-4 h-4 text-brand-green animate-spin-slow" />
+          <h4 className="text-xs font-black uppercase text-brand-green tracking-widest font-mono-custom">AMAR-AI Manufacturing & SLA Scheduler</h4>
         </div>
         
         <div className="space-y-1.5">
           {getAiInsights().map((insight, idx) => (
-            <p key={idx} className="text-xs text-slate-300 flex items-start gap-2 font-mono-custom">
-              <span className="text-brand-cyan font-bold block select-none">&gt;&gt;</span>
+            <p key={idx} className="text-xs text-slate-800 flex items-start gap-2 font-mono-custom">
+              <span className="text-brand-green font-bold block select-none">&gt;&gt;</span>
               <span>{insight}</span>
             </p>
           ))}
@@ -452,44 +481,44 @@ function DashboardView({
 
       {/* KPI METRIC CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="glass-panel p-6 rounded-xl relative overflow-hidden bg-slate-900/30">
-          <div className="absolute top-4 right-4 text-brand-cyan/20 p-2 rounded bg-slate-800/50">
+        <div className="glass-panel p-6 rounded-xl relative overflow-hidden bg-white/30">
+          <div className="absolute top-4 right-4 text-brand-green/20 p-2 rounded bg-slate-100/50">
             <TrendingUp className="w-5 h-5" />
           </div>
           <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">Annualized Pipeline Value</span>
-          <h3 className="text-2xl font-extrabold text-white mt-1.5 font-mono-custom">₹{metrics.totalValue.toLocaleString(undefined, {maximumFractionDigits:0})}</h3>
-          <span className="text-[9px] text-brand-cyan font-mono-custom mt-2 block">+₹1.2M this month</span>
+          <h3 className="text-2xl font-extrabold text-slate-900 mt-1.5 font-mono-custom">₹{metrics.totalValue.toLocaleString(undefined, {maximumFractionDigits:0})}</h3>
+          <span className="text-[9px] text-brand-green font-mono-custom mt-2 block">+₹1.2M this month</span>
         </div>
 
         <div 
           onClick={() => onNavigate('orders')}
-          className="glass-panel p-6 rounded-xl relative overflow-hidden bg-slate-900/30 cursor-pointer hover:border-brand-cyan/30 transition"
+          className="glass-panel p-6 rounded-xl relative overflow-hidden bg-white/30 cursor-pointer hover:border-brand-green/30 transition"
         >
-          <div className="absolute top-4 right-4 text-brand-cyan/20 p-2 rounded bg-slate-800/50">
+          <div className="absolute top-4 right-4 text-brand-green/20 p-2 rounded bg-slate-100/50">
             <Clock className="w-5 h-5 animate-pulse" />
           </div>
           <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">Pending SLA Verification</span>
-          <h3 className="text-2xl font-extrabold text-white mt-1.5 font-mono-custom">{metrics.pendingInquiries.length}</h3>
+          <h3 className="text-2xl font-extrabold text-slate-900 mt-1.5 font-mono-custom">{metrics.pendingInquiries.length}</h3>
           <span className="text-[9px] text-yellow-400 font-mono-custom mt-2 block">{orders.filter(o=>o.status==='pending').length} unassigned pipeline logs</span>
         </div>
 
         <div 
           onClick={() => onNavigate('inventory')}
-          className="glass-panel p-6 rounded-xl relative overflow-hidden bg-slate-900/30 cursor-pointer hover:border-brand-cyan/30 transition"
+          className="glass-panel p-6 rounded-xl relative overflow-hidden bg-white/30 cursor-pointer hover:border-brand-green/30 transition"
         >
-          <div className="absolute top-4 right-4 text-brand-cyan/20 p-2 rounded bg-slate-800/50">
+          <div className="absolute top-4 right-4 text-brand-green/20 p-2 rounded bg-slate-100/50">
             <AlertTriangle className="w-5 h-5 text-amber-500/50" />
           </div>
           <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">Critical Inventory Alerts</span>
           <h3 className="text-2xl font-extrabold text-amber-500 mt-1.5 font-mono-custom">{metrics.lowStockProducts.length}</h3>
-          <span className="text-[9px] text-slate-400 font-mono-custom mt-2 block">Require raw component refills</span>
+          <span className="text-[9px] text-slate-500 font-mono-custom mt-2 block">Require raw component refills</span>
         </div>
 
         <div 
           onClick={() => onNavigate('orders')}
-          className="glass-panel p-6 rounded-xl relative overflow-hidden bg-slate-900/30 cursor-pointer hover:border-brand-cyan/30 transition animate-glow-fade"
+          className="glass-panel p-6 rounded-xl relative overflow-hidden bg-white/30 cursor-pointer hover:border-brand-green/30 transition animate-glow-fade"
         >
-          <div className="absolute top-4 right-4 text-brand-cyan/20 p-2 rounded bg-slate-800/50">
+          <div className="absolute top-4 right-4 text-brand-green/20 p-2 rounded bg-slate-100/50">
             <ShieldAlert className="w-5 h-5 text-brand-escalate" />
           </div>
           <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">SLA Critical Escalations</span>
@@ -502,19 +531,19 @@ function DashboardView({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         {/* Inquiries pipeline summary */}
-        <div className="lg:col-span-8 glass-panel p-6 rounded-xl space-y-4 bg-slate-900/20">
-          <div className="flex justify-between items-center border-b border-industrial-800 pb-3">
-            <h4 className="font-bold text-xs uppercase text-slate-300 tracking-wider flex items-center gap-2">
-              <FileSpreadsheet className="w-4 h-4 text-brand-cyan" /> Live Verification Pipeline
+        <div className="lg:col-span-8 glass-panel p-6 rounded-xl space-y-4 bg-white/20">
+          <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+            <h4 className="font-bold text-xs uppercase text-slate-800 tracking-wider flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-brand-green" /> Live Verification Pipeline
             </h4>
-            <button onClick={() => onNavigate('orders')} className="text-[10px] text-brand-cyan font-bold hover:underline">View Pipeline Grid &gt;</button>
+            <button onClick={() => onNavigate('orders')} className="text-[10px] text-brand-green font-bold hover:underline">View Pipeline Grid &gt;</button>
           </div>
 
           <div className="space-y-3">
             {orders.slice(0, 4).map(o => (
-              <div key={o.id} className="p-3 bg-industrial-900 rounded border border-industrial-800 flex justify-between items-center text-xs">
+              <div key={o.id} className="p-3 bg-white rounded border border-slate-200 flex justify-between items-center text-xs">
                 <div className="space-y-1">
-                  <span className="font-bold text-white font-mono-custom">{o.id}</span>
+                  <span className="font-bold text-slate-900 font-mono-custom">{o.id}</span>
                   <span className="text-slate-500 font-mono-custom text-[10px] block">{o.customerCompany} • ₹{o.totalAmount.toLocaleString()}</span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -528,7 +557,7 @@ function DashboardView({
                   </span>
                   <button 
                     onClick={() => { onNavigate('orders'); }}
-                    className="p-1 text-slate-400 hover:text-white"
+                    className="p-1 text-slate-500 hover:text-slate-900"
                   >
                     <Eye className="w-3.5 h-3.5" />
                   </button>
@@ -539,25 +568,25 @@ function DashboardView({
         </div>
 
         {/* Audit feed logs */}
-        <div className="lg:col-span-4 glass-panel p-6 rounded-xl space-y-4 bg-slate-900/20">
-          <div className="flex justify-between items-center border-b border-industrial-800 pb-3">
-            <h4 className="font-bold text-xs uppercase text-slate-300 tracking-wider flex items-center gap-2">
-              <Users className="w-4 h-4 text-brand-cyan" /> Workflow Audits
+        <div className="lg:col-span-4 glass-panel p-6 rounded-xl space-y-4 bg-white/20">
+          <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+            <h4 className="font-bold text-xs uppercase text-slate-800 tracking-wider flex items-center gap-2">
+              <Users className="w-4 h-4 text-brand-green" /> Workflow Audits
             </h4>
           </div>
 
           <div className="space-y-3.5 max-h-60 overflow-y-auto pr-1">
-            <div className="text-[10px] border-l-2 border-brand-cyan pl-3 py-1 space-y-0.5">
+            <div className="text-[10px] border-l-2 border-brand-green pl-3 py-1 space-y-0.5">
               <span className="text-slate-500 block font-mono-custom">2026-05-25 11:10</span>
-              <p className="text-slate-300 leading-normal">System initialized. Synchronized 14 active database records.</p>
+              <p className="text-slate-800 leading-normal">System initialized. Synchronized 14 active database records.</p>
             </div>
             <div className="text-[10px] border-l-2 border-brand-orange pl-3 py-1 space-y-0.5">
               <span className="text-slate-500 block font-mono-custom">2026-05-25 10:47</span>
-              <p className="text-slate-300 leading-normal">SLA check executed. 1 inquiry flagged as critical ESCALATION.</p>
+              <p className="text-slate-800 leading-normal">SLA check executed. 1 inquiry flagged as critical ESCALATION.</p>
             </div>
             <div className="text-[10px] border-l-2 border-emerald-500 pl-3 py-1 space-y-0.5">
               <span className="text-slate-500 block font-mono-custom">2026-05-22 14:00</span>
-              <p className="text-slate-300 leading-normal">Admin Amarjit approved nesting order inquiry ORD-2026-003.</p>
+              <p className="text-slate-800 leading-normal">Admin Amarjit approved nesting order inquiry ORD-2026-003.</p>
             </div>
           </div>
         </div>
@@ -600,17 +629,18 @@ function OrdersPipelineView({
       {/* ORDERS PIPELINE TABLE (LEFT) */}
       <div className="lg:col-span-7 space-y-6">
         <div>
-          <h3 className="text-xl font-extrabold text-white uppercase tracking-wider">Industrial Inquiries Pipeline</h3>
-          <p className="text-xs text-slate-400">Review logistics details, product quantity requirements, and approve or assign workflows.</p>
+          <h3 className="text-xl font-extrabold text-slate-900 uppercase tracking-wider">Industrial Inquiries Pipeline</h3>
+          <p className="text-xs text-slate-500">Review logistics details, product quantity requirements, and approve or assign workflows.</p>
         </div>
 
-        <div className="glass-panel rounded-xl overflow-hidden bg-slate-900/30 border border-industrial-800">
+        <div className="glass-panel rounded-xl overflow-hidden bg-white/30 border border-slate-200">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-industrial-900 border-b border-industrial-800 text-slate-400 uppercase tracking-widest text-[9px] font-bold">
+              <tr className="bg-white border-b border-slate-200 text-slate-500 uppercase tracking-widest text-[9px] font-bold">
                 <th className="p-4">Inquiry ID</th>
                 <th className="p-4">Company Name</th>
                 <th className="p-4">Total Amount</th>
+                <th className="p-4">Quantity</th>
                 <th className="p-4">Status</th>
                 <th className="p-4">Actions</th>
               </tr>
@@ -619,19 +649,20 @@ function OrdersPipelineView({
               {orders.map((o: Order) => (
                 <tr 
                   key={o.id} 
-                  className={`hover:bg-slate-850/30 transition cursor-pointer ${selectedOrder?.id === o.id ? 'bg-brand-cyan/5' : ''}`}
+                  className={`hover:bg-slate-50/30 transition cursor-pointer ${selectedOrder?.id === o.id ? 'bg-brand-green/5' : ''}`}
                   onClick={() => setSelectedOrder(o)}
                 >
-                  <td className="p-4 font-bold font-mono-custom text-white">{o.id}</td>
-                  <td className="p-4 font-semibold text-slate-350">{o.customerCompany}</td>
-                  <td className="p-4 font-bold font-mono-custom text-brand-cyan">₹{o.totalAmount.toLocaleString()}</td>
+                  <td className="p-4 font-bold font-mono-custom text-slate-900">{o.id}</td>
+                  <td className="p-4 font-semibold text-slate-800">{o.customerCompany}</td>
+                  <td className="p-4 font-bold font-mono-custom text-brand-green">₹{o.totalAmount.toLocaleString()}</td>
+                  <td className="p-4 font-bold font-mono-custom text-slate-800">{o.items.reduce((sum, item) => sum + item.quantity, 0).toLocaleString()}</td>
                   <td className="p-4">
                     <span className={`text-[8px] font-extrabold uppercase px-2 py-0.5 rounded border ${getStatusStyle(o.status)}`}>
                       {o.status.replace('_', ' ')}
                     </span>
                   </td>
                   <td className="p-4">
-                    <button className="text-[10px] text-brand-cyan hover:underline font-bold flex items-center gap-1">
+                    <button className="text-[10px] text-brand-green hover:underline font-bold flex items-center gap-1">
                       Review <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                   </td>
@@ -645,12 +676,12 @@ function OrdersPipelineView({
       {/* DETAIL WORKFLOW ACTION CONSOLE (RIGHT) */}
       <div className="lg:col-span-5">
         {selectedOrder ? (
-          <div className="bg-slate-900/50 border border-industrial-800 p-6 rounded-2xl space-y-6 max-h-[80vh] overflow-y-auto pr-2">
+          <div className="bg-white/50 border border-slate-200 p-6 rounded-2xl space-y-6 max-h-[80vh] overflow-y-auto pr-2">
             
             {/* Header overview */}
-            <div className="flex justify-between items-start border-b border-industrial-800 pb-4">
+            <div className="flex justify-between items-start border-b border-slate-200 pb-4">
               <div>
-                <h4 className="text-base font-extrabold text-white font-mono-custom">{selectedOrder.id}</h4>
+                <h4 className="text-base font-extrabold text-slate-900 font-mono-custom">{selectedOrder.id}</h4>
                 <p className="text-[10px] text-slate-500 font-mono-custom mt-0.5">Submitted: {new Date(selectedOrder.createdAt).toLocaleDateString()} {new Date(selectedOrder.createdAt).toLocaleTimeString()}</p>
               </div>
               <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded border ${getStatusStyle(selectedOrder.status)}`}>
@@ -659,28 +690,28 @@ function OrdersPipelineView({
             </div>
 
             {/* Commercial Profile */}
-            <div className="bg-industrial-900 p-4 rounded-xl border border-industrial-800 text-xs space-y-2">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 text-xs space-y-2">
               <span className="text-[9px] text-slate-500 uppercase tracking-widest block font-bold">Buyer Logistics Matrix</span>
-              <div className="grid grid-cols-2 gap-2 text-slate-300">
+              <div className="grid grid-cols-2 gap-2 text-slate-800">
                 <div>
                   <span className="text-[10px] text-slate-500 block">Company Name</span>
-                  <p className="font-semibold text-slate-200">{selectedOrder.customerCompany}</p>
+                  <p className="font-semibold text-slate-700">{selectedOrder.customerCompany}</p>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 block">GSTIN Registration</span>
-                  <p className="font-bold text-brand-cyan font-mono-custom">{selectedOrder.gstNumber || 'NOT PROVIDED'}</p>
+                  <p className="font-bold text-brand-green font-mono-custom">{selectedOrder.gstNumber || 'NOT PROVIDED'}</p>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 block">Buyer Phone</span>
-                  <p className="font-semibold text-slate-200">{selectedOrder.shippingDetails.phone}</p>
+                  <p className="font-semibold text-slate-700">{selectedOrder.shippingDetails.phone}</p>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 block">Buyer Email</span>
-                  <p className="font-semibold text-slate-200 truncate">{selectedOrder.shippingDetails.email || 'NOT PROVIDED'}</p>
+                  <p className="font-semibold text-slate-700 truncate">{selectedOrder.shippingDetails.email || 'NOT PROVIDED'}</p>
                 </div>
                 <div className="col-span-2 pt-1">
                   <span className="text-[10px] text-slate-500 block">Warehouse Destination</span>
-                  <p className="text-slate-350 leading-relaxed">{selectedOrder.shippingDetails.address}, {selectedOrder.shippingDetails.city}</p>
+                  <p className="text-slate-800 leading-relaxed">{selectedOrder.shippingDetails.address}, {selectedOrder.shippingDetails.city}</p>
                 </div>
               </div>
             </div>
@@ -690,19 +721,19 @@ function OrdersPipelineView({
               <span className="text-[9px] text-slate-500 uppercase tracking-widest block font-bold">Contract Request specifications</span>
               <div className="space-y-1.5">
                 {selectedOrder.items.map((item: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center text-xs py-2 px-3 bg-industrial-950 rounded border border-industrial-800">
+                  <div key={idx} className="flex justify-between items-center text-xs py-2 px-3 bg-slate-50 rounded border border-slate-200">
                     <div>
-                      <p className="font-semibold text-slate-300">{item.productName}</p>
+                      <p className="font-semibold text-slate-800">{item.productName}</p>
                       <span className="text-[10px] text-slate-500 font-mono-custom">{item.productSku} × {item.quantity.toLocaleString()}</span>
                     </div>
-                    <span className="font-mono-custom font-bold text-brand-cyan">₹{(item.quantity * item.unitPrice).toLocaleString()}</span>
+                    <span className="font-mono-custom font-bold text-brand-green">₹{(item.quantity * item.unitPrice).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* ACTION PANEL */}
-            <div className="bg-industrial-900 border border-industrial-800 p-4 rounded-xl space-y-4">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl space-y-4">
               <span className="text-[9px] text-slate-500 uppercase tracking-widest block font-bold">Workflow State Dispatcher</span>
               
               {/* Remarks Field Input */}
@@ -713,7 +744,7 @@ function OrdersPipelineView({
                   placeholder="Input explanation for approvals, rejections, or operational escalations..."
                   value={remarkInput}
                   onChange={(e) => setRemarkInput(e.target.value)}
-                  className="w-full text-xs p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan focus:outline-none transition"
+                  className="w-full text-xs p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green focus:outline-none transition"
                 />
               </div>
 
@@ -728,23 +759,33 @@ function OrdersPipelineView({
               <div className="flex gap-2">
                 <button 
                   onClick={() => handleUpdateStatus(selectedOrder.id, 'approved', remarkInput)}
-                  className="flex-1 py-2 px-3 bg-brand-emerald text-slate-950 text-xs font-bold rounded flex items-center justify-center gap-1.5 hover:bg-emerald-400 transition"
+                  disabled={selectedOrder.status === 'approved' || selectedOrder.status === 'rejected'}
+                  className={`flex-1 py-2 px-3 text-xs font-bold rounded flex items-center justify-center gap-1.5 transition ${
+                    selectedOrder.status === 'approved' || selectedOrder.status === 'rejected'
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-brand-emerald text-slate-950 hover:bg-emerald-400'
+                  }`}
                 >
                   <Check className="w-3.5 h-3.5" /> Approve Inquiry
                 </button>
                 <button 
                   onClick={() => handleUpdateStatus(selectedOrder.id, 'rejected', remarkInput)}
-                  className="flex-1 py-2 px-3 bg-red-600 text-white text-xs font-bold rounded flex items-center justify-center gap-1.5 hover:bg-red-500 transition"
+                  disabled={selectedOrder.status === 'approved' || selectedOrder.status === 'rejected'}
+                  className={`flex-1 py-2 px-3 text-xs font-bold rounded flex items-center justify-center gap-1.5 transition ${
+                    selectedOrder.status === 'approved' || selectedOrder.status === 'rejected'
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-red-600 text-slate-900 hover:bg-red-500'
+                  }`}
                 >
                   <X className="w-3.5 h-3.5" /> Reject Inquiry
                 </button>
               </div>
 
               {/* Additional operational logs update */}
-              <div className="flex gap-2 border-t border-industrial-800 pt-3">
+              <div className="flex gap-2 border-t border-slate-200 pt-3">
                 <button 
                   onClick={() => handleAddCustomRemark(selectedOrder.id)}
-                  className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700/50 text-[10px] font-bold text-slate-300 rounded flex items-center justify-center gap-1 transition"
+                  className="w-full py-1.5 bg-slate-100 hover:bg-slate-700 border border-slate-700/50 text-[10px] font-bold text-slate-800 rounded flex items-center justify-center gap-1 transition"
                 >
                   <Send className="w-3 h-3" /> Log Operational Comment
                 </button>
@@ -760,19 +801,19 @@ function OrdersPipelineView({
             </div>
 
             {/* Remarks ledger list */}
-            <div className="space-y-3 pt-3 border-t border-industrial-800">
+            <div className="space-y-3 pt-3 border-t border-slate-200">
               <span className="text-[9px] text-slate-500 uppercase tracking-widest block font-bold">Ledger Remark Records ({selectedOrder.remarks.length})</span>
               {selectedOrder.remarks.length === 0 ? (
                 <p className="text-[10px] text-slate-500 italic">No verification comments recorded.</p>
               ) : (
                 <div className="space-y-2.5">
                   {selectedOrder.remarks.map((rem: any, idx: number) => (
-                    <div key={idx} className="p-3 bg-industrial-950 rounded border border-industrial-800 text-[10px] space-y-1">
+                    <div key={idx} className="p-3 bg-slate-50 rounded border border-slate-200 text-[10px] space-y-1">
                       <div className="flex justify-between items-center">
-                        <span className="font-bold text-slate-300">{rem.authorName} <span className="text-[8px] text-slate-500 uppercase font-normal font-sans">({rem.authorRole})</span></span>
+                        <span className="font-bold text-slate-800">{rem.authorName} <span className="text-[8px] text-slate-500 uppercase font-normal font-sans">({rem.authorRole})</span></span>
                         <span className="text-[8px] text-slate-600 font-mono-custom">{new Date(rem.createdAt).toLocaleDateString()} {new Date(rem.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                       </div>
-                      <p className="text-slate-450 leading-relaxed">{rem.content}</p>
+                      <p className="text-slate-600 leading-relaxed">{rem.content}</p>
                     </div>
                   ))}
                 </div>
@@ -781,7 +822,7 @@ function OrdersPipelineView({
 
           </div>
         ) : (
-          <div className="bg-slate-900/20 border border-dashed border-industrial-800 rounded-2xl p-16 text-center text-slate-500 space-y-4">
+          <div className="bg-white/20 border border-dashed border-slate-200 rounded-2xl p-16 text-center text-slate-500 space-y-4">
             <FileSpreadsheet className="w-12 h-12 mx-auto text-slate-750" />
             <p className="text-sm">Select an active order inquiry from the pipeline directory to open the workflow state review console.</p>
           </div>
@@ -829,12 +870,12 @@ function InventoryView({
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h3 className="text-xl font-extrabold text-white uppercase tracking-wider">Warehouse Inventory Matrix</h3>
-        <p className="text-xs text-slate-400">Monitor raw stock levels, set warning margins, and run custom refill or stock reduction adjustments.</p>
+        <h3 className="text-xl font-extrabold text-slate-900 uppercase tracking-wider">Warehouse Inventory Matrix</h3>
+        <p className="text-xs text-slate-500">Monitor raw stock levels, set warning margins, and run custom refill or stock reduction adjustments.</p>
       </div>
 
       {inventoryMessage && (
-        <div className="bg-brand-cyan/10 border border-brand-cyan/20 p-3 rounded-lg flex items-center justify-between gap-3 text-xs text-brand-cyan">
+        <div className="bg-brand-green/10 border border-brand-green/20 p-3 rounded-lg flex items-center justify-between gap-3 text-xs text-brand-green">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
             <p>{inventoryMessage}</p>
@@ -842,7 +883,7 @@ function InventoryView({
           <button
             type="button"
             onClick={() => setInventoryMessage(null)}
-            className="p-1 rounded hover:bg-brand-cyan/10 text-brand-cyan transition"
+            className="p-1 rounded hover:bg-brand-green/10 text-brand-green transition"
             aria-label="Dismiss inventory message"
           >
             <X className="w-3.5 h-3.5" />
@@ -850,10 +891,10 @@ function InventoryView({
         </div>
       )}
 
-      <div className="glass-panel rounded-xl overflow-hidden bg-slate-900/30 border border-industrial-800">
+      <div className="glass-panel rounded-xl overflow-hidden bg-white/30 border border-slate-200">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-industrial-900 border-b border-industrial-800 text-slate-400 uppercase tracking-widest text-[9px] font-bold">
+            <tr className="bg-white border-b border-slate-200 text-slate-500 uppercase tracking-widest text-[9px] font-bold">
               <th className="p-4">Product Name</th>
               <th className="p-4">SKU Code</th>
               <th className="p-4">Current Stock</th>
@@ -867,14 +908,14 @@ function InventoryView({
               const isLow = p.stockLevel <= p.minStockThreshold;
               
               return (
-                <tr key={p.id} className="hover:bg-slate-850/20 transition">
-                  <td className="p-4 font-bold text-white leading-tight">
+                <tr key={p.id} className="hover:bg-slate-50/20 transition">
+                  <td className="p-4 font-bold text-slate-900 leading-tight">
                     {p.name}
                     <span className="text-[9px] text-slate-500 block font-normal capitalize mt-0.5">
                       {categories.find(c=>c.id===p.categoryId)?.name || 'General Product'}
                     </span>
                   </td>
-                  <td className="p-4 font-mono-custom text-slate-400">{p.sku}</td>
+                  <td className="p-4 font-mono-custom text-slate-500">{p.sku}</td>
                   <td className="p-4 font-bold font-mono-custom">{p.stockLevel.toLocaleString()} units</td>
                   <td className="p-4 font-mono-custom text-slate-500">{p.minStockThreshold.toLocaleString()} units</td>
                   <td className="p-4">
@@ -897,13 +938,13 @@ function InventoryView({
                         value={stockAdjustments[p.id] || ''}
                         onChange={(e) => setStockAdjustments(prev => ({ ...prev, [p.id]: e.target.value }))}
                         placeholder="Custom units"
-                        className="w-full text-[10px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                        className="w-full text-[10px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <button 
                           type="button"
                           onClick={() => handleStockAdjustment(p, 'add')}
-                          className="px-2.5 py-1.5 bg-brand-cyan text-slate-950 text-[10px] font-black rounded hover:bg-cyan-400 transition flex items-center justify-center gap-1"
+                          className="px-2.5 py-1.5 bg-brand-green text-slate-950 text-[10px] font-black rounded hover:bg-cyan-400 transition flex items-center justify-center gap-1"
                         >
                           <Plus className="w-3 h-3" /> Refill
                         </button>
@@ -994,32 +1035,32 @@ function AnalyticsDashboardView({
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
-          <h3 className="text-xl font-extrabold text-white uppercase tracking-wider">Enterprise Performance Analytics</h3>
-          <p className="text-xs text-slate-400 mt-1">
+          <h3 className="text-xl font-extrabold text-slate-900 uppercase tracking-wider">Enterprise Performance Analytics</h3>
+          <p className="text-xs text-slate-500 mt-1">
             Choose how to slice your pipeline — by state, company, sales timeline, or quantity by category.
           </p>
         </div>
         <div className="flex gap-4 text-xs">
-          <div className="glass-panel px-4 py-2 rounded-lg border border-industrial-800">
+          <div className="glass-panel px-4 py-2 rounded-lg border border-slate-200">
             <span className="text-slate-500 block text-[9px] uppercase">Filtered orders</span>
-            <span className="font-mono-custom font-bold text-brand-cyan">{filteredOrders.length}</span>
+            <span className="font-mono-custom font-bold text-brand-green">{filteredOrders.length}</span>
           </div>
-          <div className="glass-panel px-4 py-2 rounded-lg border border-industrial-800">
+          <div className="glass-panel px-4 py-2 rounded-lg border border-slate-200">
             <span className="text-slate-500 block text-[9px] uppercase">Pipeline value</span>
             <span className="font-mono-custom font-bold text-emerald-400">₹{totalRevenue.toLocaleString('en-IN')}</span>
           </div>
-          <div className="glass-panel px-4 py-2 rounded-lg border border-industrial-800">
+          <div className="glass-panel px-4 py-2 rounded-lg border border-slate-200">
             <span className="text-slate-500 block text-[9px] uppercase">Total units</span>
-            <span className="font-mono-custom font-bold text-slate-200">{totalQty.toLocaleString('en-IN')}</span>
+            <span className="font-mono-custom font-bold text-slate-700">{totalQty.toLocaleString('en-IN')}</span>
           </div>
         </div>
       </div>
 
       {/* Analytics preferences */}
-      <div className="glass-panel p-5 rounded-xl bg-slate-900/40 border border-industrial-800 space-y-4">
-        <div className="flex items-center gap-2 border-b border-industrial-800 pb-3">
-          <Filter className="w-4 h-4 text-brand-cyan" />
-          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Analytics View Preference</span>
+      <div className="glass-panel p-5 rounded-xl bg-white/40 border border-slate-200 space-y-4">
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+          <Filter className="w-4 h-4 text-brand-green" />
+          <span className="text-[10px] font-bold text-slate-800 uppercase tracking-widest">Analytics View Preference</span>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -1030,8 +1071,8 @@ function AnalyticsDashboardView({
               onClick={() => updatePrefs({ viewMode: m.id })}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
                 prefs.viewMode === m.id
-                  ? 'bg-brand-cyan/20 border border-brand-cyan text-brand-cyan'
-                  : 'bg-slate-900 border border-industrial-800 text-slate-400 hover:text-slate-200'
+                  ? 'bg-brand-green/20 border border-brand-green text-brand-green'
+                  : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-700'
               }`}
             >
               {m.icon}
@@ -1051,7 +1092,7 @@ function AnalyticsDashboardView({
                 className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition cursor-pointer ${
                   prefs.measure === m.id
                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                    : 'bg-industrial-950 text-slate-500 border border-industrial-800 hover:text-slate-300'
+                    : 'bg-slate-50 text-slate-500 border border-slate-200 hover:text-slate-800'
                 }`}
               >
                 {m.label}
@@ -1060,7 +1101,7 @@ function AnalyticsDashboardView({
           </div>
         )}
 
-        <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+        <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
           <input
             type="checkbox"
             checked={prefs.includePending}
@@ -1073,8 +1114,8 @@ function AnalyticsDashboardView({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Primary chart */}
-        <div className="glass-panel p-6 rounded-xl bg-slate-900/30 space-y-4 lg:col-span-2">
-          <span className="text-[10px] font-bold text-brand-cyan uppercase tracking-widest block">
+        <div className="glass-panel p-6 rounded-xl bg-white/30 space-y-4 lg:col-span-2">
+          <span className="text-[10px] font-bold text-brand-green uppercase tracking-widest block">
             {viewModeTitle(prefs.viewMode)} — {measureLabel(activeMeasure)}
           </span>
           <div className="h-80">
@@ -1130,12 +1171,12 @@ function AnalyticsDashboardView({
         </div>
 
         {/* Breakdown table */}
-        <div className="glass-panel p-6 rounded-xl bg-slate-900/30 space-y-4 lg:col-span-2">
-          <span className="text-[10px] font-bold text-brand-cyan uppercase tracking-widest block">Detailed breakdown</span>
+        <div className="glass-panel p-6 rounded-xl bg-white/30 space-y-4 lg:col-span-2">
+          <span className="text-[10px] font-bold text-brand-green uppercase tracking-widest block">Detailed breakdown</span>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-slate-500 uppercase text-[9px] border-b border-industrial-800">
+                <tr className="text-left text-slate-500 uppercase text-[9px] border-b border-slate-200">
                   <th className="py-2 pr-4">Segment</th>
                   <th className="py-2 pr-4 text-right">Sales (₹)</th>
                   <th className="py-2 pr-4 text-right">Quantity</th>
@@ -1144,15 +1185,15 @@ function AnalyticsDashboardView({
               </thead>
               <tbody>
                 {tableRows.map((row, idx) => (
-                  <tr key={idx} className="border-b border-industrial-800/50 hover:bg-slate-900/50">
-                    <td className="py-2.5 pr-4 font-semibold text-slate-300">{row.name}</td>
+                  <tr key={idx} className="border-b border-slate-200/50 hover:bg-white/50">
+                    <td className="py-2.5 pr-4 font-semibold text-slate-800">{row.name}</td>
                     <td className="py-2.5 pr-4 text-right font-mono-custom text-emerald-400">
                       ₹{(row.revenue || 0).toLocaleString('en-IN')}
                     </td>
-                    <td className="py-2.5 pr-4 text-right font-mono-custom text-slate-400">
+                    <td className="py-2.5 pr-4 text-right font-mono-custom text-slate-500">
                       {(row.quantity || 0).toLocaleString('en-IN')}
                     </td>
-                    <td className="py-2.5 text-right font-mono-custom text-brand-cyan">{row.orders || 0}</td>
+                    <td className="py-2.5 text-right font-mono-custom text-brand-green">{row.orders || 0}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1162,8 +1203,8 @@ function AnalyticsDashboardView({
 
         {/* Pie share for state/company */}
         {(prefs.viewMode === 'state' || prefs.viewMode === 'company') && chartData.length > 0 && (
-          <div className="glass-panel p-6 rounded-xl bg-slate-900/30 space-y-4 lg:col-span-2">
-            <span className="text-[10px] font-bold text-brand-cyan uppercase tracking-widest block">
+          <div className="glass-panel p-6 rounded-xl bg-white/30 space-y-4 lg:col-span-2">
+            <span className="text-[10px] font-bold text-brand-green uppercase tracking-widest block">
               Share distribution — {measureLabel(prefs.measure)}
             </span>
             <div className="flex flex-col md:flex-row items-center gap-8">
@@ -1190,7 +1231,7 @@ function AnalyticsDashboardView({
                     <div key={idx} className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: COLORS[idx % COLORS.length] }} />
-                        <span className="text-slate-300 font-semibold truncate max-w-[200px]">{c.name}</span>
+                        <span className="text-slate-800 font-semibold truncate max-w-[200px]">{c.name}</span>
                       </div>
                       <span className="text-slate-500 font-mono-custom">{pct}%</span>
                     </div>
@@ -1425,14 +1466,14 @@ function ExportCenterView({
   return (
     <div className="space-y-6 max-w-2xl animate-fade-in">
       <div>
-        <h3 className="text-xl font-extrabold text-white uppercase tracking-wider">Spreadsheet & Document Export Center</h3>
-        <p className="text-xs text-slate-400">Generate audits, export spreadsheet formats for accounting systems, or print executive PDFs.</p>
+        <h3 className="text-xl font-extrabold text-slate-900 uppercase tracking-wider">Spreadsheet & Document Export Center</h3>
+        <p className="text-xs text-slate-500">Generate audits, export spreadsheet formats for accounting systems, or print executive PDFs.</p>
       </div>
 
-      <form onSubmit={handleTriggerRun} className="glass-panel p-6 rounded-2xl bg-slate-900/40 border border-industrial-800 space-y-5">
-        <div className="border-b border-industrial-800 pb-3">
-          <h4 className="font-bold text-xs uppercase text-slate-300 tracking-wider flex items-center gap-2">
-            <Filter className="w-4 h-4 text-brand-cyan" /> Configure Export Matrix
+      <form onSubmit={handleTriggerRun} className="glass-panel p-6 rounded-2xl bg-white/40 border border-slate-200 space-y-5">
+        <div className="border-b border-slate-200 pb-3">
+          <h4 className="font-bold text-xs uppercase text-slate-800 tracking-wider flex items-center gap-2">
+            <Filter className="w-4 h-4 text-brand-green" /> Configure Export Matrix
           </h4>
         </div>
 
@@ -1445,21 +1486,21 @@ function ExportCenterView({
               <button 
                 type="button"
                 onClick={() => setExportFormat('excel')}
-                className={`py-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 ${exportFormat === 'excel' ? 'bg-brand-cyan/10 border-brand-cyan text-brand-cyan' : 'bg-industrial-900 border-industrial-800 text-slate-450 hover:text-slate-200'}`}
+                className={`py-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 ${exportFormat === 'excel' ? 'bg-brand-green/10 border-brand-green text-brand-green' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-700'}`}
               >
                 <FileSpreadsheet className="w-4 h-4" /> Microsoft Excel
               </button>
               <button 
                 type="button"
                 onClick={() => setExportFormat('csv')}
-                className={`py-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 ${exportFormat === 'csv' ? 'bg-brand-cyan/10 border-brand-cyan text-brand-cyan' : 'bg-industrial-900 border-industrial-800 text-slate-450 hover:text-slate-200'}`}
+                className={`py-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 ${exportFormat === 'csv' ? 'bg-brand-green/10 border-brand-green text-brand-green' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-700'}`}
               >
                 <FileSpreadsheet className="w-4 h-4" /> CSV Format
               </button>
               <button 
                 type="button"
                 onClick={() => setExportFormat('pdf')}
-                className={`py-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 ${exportFormat === 'pdf' ? 'bg-brand-cyan/10 border-brand-cyan text-brand-cyan' : 'bg-industrial-900 border-industrial-800 text-slate-450 hover:text-slate-200'}`}
+                className={`py-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 ${exportFormat === 'pdf' ? 'bg-brand-green/10 border-brand-green text-brand-green' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-700'}`}
               >
                 <FileText className="w-4 h-4" /> PDF Audit
               </button>
@@ -1472,7 +1513,7 @@ function ExportCenterView({
             <select 
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full text-xs p-2.5 rounded-lg bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+              className="w-full text-xs p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
             >
               <option value="all">All Inquiries</option>
               <option value="pending">Pending Review Only</option>
@@ -1483,7 +1524,7 @@ function ExportCenterView({
           </div>
 
           {/* Customer detail export option */}
-          <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${includeCustomerDetails ? 'bg-brand-cyan/10 border-brand-cyan/40' : 'bg-industrial-950 border-industrial-800 hover:border-industrial-700'}`}>
+          <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${includeCustomerDetails ? 'bg-brand-green/10 border-brand-green/40' : 'bg-slate-50 border-slate-200 hover:border-industrial-700'}`}>
             <input
               type="checkbox"
               checked={includeCustomerDetails}
@@ -1491,7 +1532,7 @@ function ExportCenterView({
               className="mt-1 h-4 w-4 accent-cyan-400"
             />
             <span className="space-y-1">
-              <span className="text-xs font-bold text-slate-200 uppercase tracking-wider block">Include Customer Details</span>
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Include Customer Details</span>
               <span className="text-[10px] text-slate-500 leading-relaxed block">
                 Adds customer ID, registered name, email, phone number, GSTIN, registered address, shipping address, and notes to the export.
               </span>
@@ -1509,7 +1550,7 @@ function ExportCenterView({
 
         <button 
           type="submit"
-          className="w-full py-3 bg-brand-cyan hover:bg-cyan-400 text-slate-950 text-xs font-extrabold uppercase tracking-wider rounded-lg shadow-xl shadow-brand-cyan/15 flex items-center justify-center gap-2 transition duration-300"
+          className="w-full py-3 bg-brand-green hover:bg-cyan-400 text-slate-950 text-xs font-extrabold uppercase tracking-wider rounded-lg shadow-xl shadow-brand-green/15 flex items-center justify-center gap-2 transition duration-300"
         >
           <Download className="w-4 h-4" /> Compile & Download Report
         </button>
@@ -1880,12 +1921,12 @@ function ProductsManagementView({
       
       {/* TOAST SYSTEM BANNER */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 glass-panel-glow border-l-4 border-brand-cyan px-5 py-4 rounded-xl max-w-md shadow-2xl flex items-center justify-between gap-4 animate-slide-up bg-slate-900">
+        <div className="fixed bottom-6 right-6 z-50 glass-panel-glow border-l-4 border-brand-green px-5 py-4 rounded-xl max-w-md shadow-2xl flex items-center justify-between gap-4 animate-slide-up bg-white">
           <div className="flex items-center gap-3">
-            <Sparkles className="w-5 h-5 text-brand-cyan flex-shrink-0 animate-bounce" />
-            <p className="text-xs font-semibold text-slate-200">{toastMessage}</p>
+            <Sparkles className="w-5 h-5 text-brand-green flex-shrink-0 animate-bounce" />
+            <p className="text-xs font-semibold text-slate-700">{toastMessage}</p>
           </div>
-          <button onClick={() => setToastMessage(null)} className="text-slate-400 hover:text-white transition">
+          <button onClick={() => setToastMessage(null)} className="text-slate-500 hover:text-slate-900 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1894,21 +1935,21 @@ function ProductsManagementView({
       {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h3 className="text-xl font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
-            <Layers className="w-5 h-5 text-brand-cyan" /> Unified Product Catalog
+          <h3 className="text-xl font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+            <Layers className="w-5 h-5 text-brand-green" /> Unified Product Catalog
           </h3>
-          <p className="text-xs text-slate-400">Configure factory products, volume tiers, MOQ scales, and marketing metadata fields.</p>
+          <p className="text-xs text-slate-500">Configure factory products, volume tiers, MOQ scales, and marketing metadata fields.</p>
         </div>
         <button
           onClick={handleOpenCreateModal}
-          className="py-2.5 px-4 bg-brand-cyan hover:bg-cyan-400 text-slate-950 text-xs font-black uppercase tracking-wider rounded-lg flex items-center gap-1.5 shadow-lg shadow-brand-cyan/10 transition duration-200 cursor-pointer"
+          className="py-2.5 px-4 bg-brand-green hover:bg-cyan-400 text-slate-950 text-xs font-black uppercase tracking-wider rounded-lg flex items-center gap-1.5 shadow-lg shadow-brand-green/10 transition duration-200 cursor-pointer"
         >
           <Plus className="w-4 h-4" /> Add New Product
         </button>
       </div>
 
       {/* FILTER SEARCH GRID */}
-      <div className="glass-panel p-4 rounded-xl grid grid-cols-1 sm:grid-cols-12 gap-4 items-center bg-slate-900/20">
+      <div className="glass-panel p-4 rounded-xl grid grid-cols-1 sm:grid-cols-12 gap-4 items-center bg-white/20">
         
         {/* Search Query */}
         <div className="sm:col-span-6 relative">
@@ -1918,7 +1959,7 @@ function ProductsManagementView({
             placeholder="Search by product name, SKU code, tags..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full text-xs pl-10 pr-4 py-2.5 rounded-lg bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none transition"
+            className="w-full text-xs pl-10 pr-4 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none transition"
           />
         </div>
 
@@ -1927,7 +1968,7 @@ function ProductsManagementView({
           <select 
             value={selectedCatFilter}
             onChange={(e) => setSelectedCatFilter(e.target.value)}
-            className="w-full text-xs p-2.5 rounded-lg bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+            className="w-full text-xs p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
           >
             <option value="all">All Categories</option>
             {categories.map(cat => (
@@ -1941,7 +1982,7 @@ function ProductsManagementView({
           <select 
             value={selectedStatusFilter}
             onChange={(e) => setSelectedStatusFilter(e.target.value)}
-            className="w-full text-xs p-2.5 rounded-lg bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+            className="w-full text-xs p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
           >
             <option value="all">All Statuses</option>
             <option value="active">Active Tiers</option>
@@ -1953,10 +1994,10 @@ function ProductsManagementView({
       </div>
 
       {/* PRODUCTS MATRIX TABLE */}
-      <div className="glass-panel rounded-xl overflow-hidden bg-slate-900/30 border border-industrial-800">
+      <div className="glass-panel rounded-xl overflow-hidden bg-white/30 border border-slate-200">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-industrial-900 border-b border-industrial-800 text-slate-400 uppercase tracking-widest text-[9px] font-bold">
+            <tr className="bg-white border-b border-slate-200 text-slate-500 uppercase tracking-widest text-[9px] font-bold">
               <th className="p-4 pl-6 w-14">Image</th>
               <th className="p-4">Product Details</th>
               <th className="p-4">Supply Specs</th>
@@ -1979,25 +2020,25 @@ function ProductsManagementView({
                 const isLow = p.stockLevel <= p.minStockThreshold;
 
                 return (
-                  <tr key={p.id} className="hover:bg-slate-850/15 transition">
+                  <tr key={p.id} className="hover:bg-slate-50/15 transition">
                     
                     {/* IMAGE */}
                     <td className="p-4 pl-6">
                       <img 
                         src={p.imageUrls[0] || 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?q=80&w=100'} 
                         alt={p.name}
-                        className="w-10 h-10 object-cover rounded-lg border border-industrial-800 bg-slate-950" 
+                        className="w-10 h-10 object-cover rounded-lg border border-slate-200 bg-slate-50" 
                       />
                     </td>
 
                     {/* DETAILS */}
                     <td className="p-4">
                       <div className="space-y-0.5">
-                        <p className="font-extrabold text-white text-xs hover:text-brand-cyan cursor-pointer transition" onClick={() => handleOpenEditModal(p)}>{p.name}</p>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-450 font-mono-custom">
+                        <p className="font-extrabold text-slate-900 text-xs hover:text-brand-green cursor-pointer transition" onClick={() => handleOpenEditModal(p)}>{p.name}</p>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-600 font-mono-custom">
                           <span>{p.sku}</span>
                           <span className="text-slate-650">•</span>
-                          <span className="text-brand-cyan/80 capitalize font-sans font-semibold">{categoryName}</span>
+                          <span className="text-brand-green/80 capitalize font-sans font-semibold">{categoryName}</span>
                         </div>
                       </div>
                     </td>
@@ -2005,15 +2046,15 @@ function ProductsManagementView({
                     {/* SUPPLY */}
                     <td className="p-4">
                       <div className="space-y-0.5">
-                        <p className="font-bold text-slate-200">MOQ: <span className="font-mono-custom font-normal text-slate-350">{p.moq.toLocaleString()}</span> <span className="text-[10px] text-slate-500">/{p.unitType}</span></p>
-                        <p className="text-[10px] text-slate-450 font-semibold">Base: <span className="font-mono-custom text-brand-cyan">₹{p.basePrice.toFixed(4)}</span></p>
+                        <p className="font-bold text-slate-700">MOQ: <span className="font-mono-custom font-normal text-slate-800">{p.moq.toLocaleString()}</span> <span className="text-[10px] text-slate-500">/{p.unitType}</span></p>
+                        <p className="text-[10px] text-slate-600 font-semibold">Base: <span className="font-mono-custom text-brand-green">₹{p.basePrice.toFixed(4)}</span></p>
                       </div>
                     </td>
 
                     {/* STOCK */}
                     <td className="p-4">
                       <div className="space-y-0.5">
-                        <p className={`font-bold font-mono-custom ${isLow ? 'text-amber-500' : 'text-slate-200'}`}>
+                        <p className={`font-bold font-mono-custom ${isLow ? 'text-amber-500' : 'text-slate-700'}`}>
                           {p.stockLevel.toLocaleString()} units
                         </p>
                         <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-semibold w-fit block ${
@@ -2033,7 +2074,7 @@ function ProductsManagementView({
                         <button 
                           onClick={() => toggleFeatured(p)}
                           title={p.featured ? "Featured Product" : "Mark as Featured"}
-                          className={`p-1 rounded hover:bg-slate-800 transition ${p.featured ? 'text-yellow-400' : 'text-slate-600'}`}
+                          className={`p-1 rounded hover:bg-slate-100 transition ${p.featured ? 'text-yellow-400' : 'text-slate-600'}`}
                         >
                           <Star className="w-4 h-4 fill-current" />
                         </button>
@@ -2041,7 +2082,7 @@ function ProductsManagementView({
                         <button 
                           onClick={() => toggleTrending(p)}
                           title={p.trending ? "Trending Product" : "Mark as Trending"}
-                          className={`p-1 rounded hover:bg-slate-800 transition ${p.trending ? 'text-brand-orange' : 'text-slate-600'}`}
+                          className={`p-1 rounded hover:bg-slate-100 transition ${p.trending ? 'text-brand-orange' : 'text-slate-600'}`}
                         >
                           <Flame className="w-4 h-4 fill-current" />
                         </button>
@@ -2054,7 +2095,7 @@ function ProductsManagementView({
                         onClick={() => toggleAvailability(p)}
                         className={`text-[8px] font-extrabold uppercase px-2 py-0.5 rounded border transition ${
                           p.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' :
-                          p.status === 'hidden' ? 'bg-slate-700/25 text-slate-400 border-slate-700/35 hover:bg-slate-700/40' :
+                          p.status === 'hidden' ? 'bg-slate-700/25 text-slate-500 border-slate-700/35 hover:bg-slate-700/40' :
                           'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20'
                         }`}
                       >
@@ -2068,7 +2109,7 @@ function ProductsManagementView({
                         <button 
                           onClick={() => handleOpenEditModal(p)}
                           title="Edit Specifications"
-                          className="p-1.5 bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded text-slate-300 hover:text-white transition cursor-pointer"
+                          className="p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-800 hover:border-slate-700 rounded text-slate-800 hover:text-slate-900 transition cursor-pointer"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -2093,13 +2134,13 @@ function ProductsManagementView({
       {/* MODAL SYSTEM CREATION/EDITING (TABBED SHEET) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 md:p-6 backdrop-blur-sm animate-fade-in">
-          <div className="glass-panel rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-industrial-800 bg-slate-950">
+          <div className="glass-panel rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-slate-200 bg-slate-50">
             
             {/* Modal Header */}
-            <div className="bg-industrial-900 px-6 py-4 border-b border-industrial-800 flex justify-between items-center">
+            <div className="bg-white px-6 py-4 border-b border-slate-200 flex justify-between items-center">
               <div>
-                <h4 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
-                  <Package className="w-4 h-4 text-brand-cyan" /> 
+                <h4 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-brand-green" /> 
                   {modalMode === 'create' ? 'Create New Industrial Catalog Item' : 'Modify Product Specifications'}
                 </h4>
                 <p className="text-[10px] text-slate-500 font-mono-custom mt-0.5">
@@ -2109,7 +2150,7 @@ function ProductsManagementView({
               <button 
                 type="button" 
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2122,32 +2163,32 @@ function ProductsManagementView({
               <div className="flex-1 space-y-5">
                 
                 {/* Form Tabs Nav */}
-                <div className="flex border-b border-industrial-800 gap-1.5 text-xs pb-0.5 overflow-x-auto">
+                <div className="flex border-b border-slate-200 gap-1.5 text-xs pb-0.5 overflow-x-auto">
                   <button
                     type="button"
                     onClick={() => setModalTab('general')}
-                    className={`pb-2 px-3 font-semibold transition uppercase tracking-wider ${modalTab === 'general' ? 'border-b-2 border-brand-cyan text-brand-cyan' : 'text-slate-450 hover:text-slate-200'}`}
+                    className={`pb-2 px-3 font-semibold transition uppercase tracking-wider ${modalTab === 'general' ? 'border-b-2 border-brand-green text-brand-green' : 'text-slate-600 hover:text-slate-700'}`}
                   >
                     General Info
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalTab('moq')}
-                    className={`pb-2 px-3 font-semibold transition uppercase tracking-wider ${modalTab === 'moq' ? 'border-b-2 border-brand-cyan text-brand-cyan' : 'text-slate-450 hover:text-slate-200'}`}
+                    className={`pb-2 px-3 font-semibold transition uppercase tracking-wider ${modalTab === 'moq' ? 'border-b-2 border-brand-green text-brand-green' : 'text-slate-600 hover:text-slate-700'}`}
                   >
                     MOQ & Supply Tiers
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalTab('specs')}
-                    className={`pb-2 px-3 font-semibold transition uppercase tracking-wider ${modalTab === 'specs' ? 'border-b-2 border-brand-cyan text-brand-cyan' : 'text-slate-450 hover:text-slate-200'}`}
+                    className={`pb-2 px-3 font-semibold transition uppercase tracking-wider ${modalTab === 'specs' ? 'border-b-2 border-brand-green text-brand-green' : 'text-slate-600 hover:text-slate-700'}`}
                   >
                     Technical Specs
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalTab('marketing')}
-                    className={`pb-2 px-3 font-semibold transition uppercase tracking-wider ${modalTab === 'marketing' ? 'border-b-2 border-brand-cyan text-brand-cyan' : 'text-slate-450 hover:text-slate-200'}`}
+                    className={`pb-2 px-3 font-semibold transition uppercase tracking-wider ${modalTab === 'marketing' ? 'border-b-2 border-brand-green text-brand-green' : 'text-slate-600 hover:text-slate-700'}`}
                   >
                     Marketing & Tags
                   </button>
@@ -2168,7 +2209,7 @@ function ProductsManagementView({
                           value={formName}
                           onChange={(e) => setFormName(e.target.value)}
                           placeholder="e.g. Premium 250ml Dessert Tub"
-                          className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                          className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                         />
                       </div>
 
@@ -2180,7 +2221,7 @@ function ProductsManagementView({
                           value={formSku}
                           onChange={(e) => setFormSku(e.target.value)}
                           placeholder="e.g. AMAR-IC-250"
-                          className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none font-mono-custom"
+                          className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none font-mono-custom"
                         />
                       </div>
 
@@ -2189,7 +2230,7 @@ function ProductsManagementView({
                         <select 
                           value={formCategoryId}
                           onChange={(e) => setFormCategoryId(e.target.value)}
-                          className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                          className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                         >
                           {categories.map(c => (
                             <option key={c.id} value={c.id}>{c.name}</option>
@@ -2204,7 +2245,7 @@ function ProductsManagementView({
                           value={formDescription}
                           onChange={(e) => setFormDescription(e.target.value)}
                           placeholder="Provide detailed description of material applications and rigidity properties..."
-                          className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                          className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                         />
                       </div>
 
@@ -2216,7 +2257,7 @@ function ProductsManagementView({
                           required
                           value={formBasePrice}
                           onChange={(e) => setFormBasePrice(Number(e.target.value))}
-                          className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none font-mono-custom"
+                          className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none font-mono-custom"
                         />
                       </div>
 
@@ -2228,7 +2269,7 @@ function ProductsManagementView({
                           value={formUnitType}
                           onChange={(e) => setFormUnitType(e.target.value)}
                           placeholder="e.g. Thousand, Crate, Million"
-                          className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                          className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                         />
                       </div>
 
@@ -2238,7 +2279,7 @@ function ProductsManagementView({
                           type="number" 
                           value={formStockLevel}
                           onChange={(e) => setFormStockLevel(Number(e.target.value))}
-                          className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none font-mono-custom"
+                          className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none font-mono-custom"
                         />
                       </div>
 
@@ -2248,7 +2289,7 @@ function ProductsManagementView({
                           type="number" 
                           value={formMinStockThreshold}
                           onChange={(e) => setFormMinStockThreshold(Number(e.target.value))}
-                          className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none font-mono-custom"
+                          className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none font-mono-custom"
                         />
                       </div>
 
@@ -2267,22 +2308,22 @@ function ProductsManagementView({
                             required
                             value={formMoq}
                             onChange={(e) => setFormMoq(Number(e.target.value))}
-                            className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none font-mono-custom"
+                            className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none font-mono-custom"
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] text-slate-500 uppercase font-semibold block">&nbsp;</label>
-                          <span className="text-[11px] text-slate-450 block pt-3">
+                          <span className="text-[11px] text-slate-600 block pt-3">
                             Orders below this volume threshold are automatically blocked inside customer portal.
                           </span>
                         </div>
                       </div>
 
                       {/* Volume Price Tiers Config */}
-                      <div className="border border-industrial-800 rounded-xl p-4 bg-industrial-900 space-y-4">
+                      <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-4">
                         <div className="flex justify-between items-center">
-                          <span className="text-[10px] text-slate-350 uppercase tracking-widest font-bold">Configure Discount Tiers</span>
-                          <span className="text-[9px] text-brand-cyan font-mono-custom">Local-First Dynamic Price Engine</span>
+                          <span className="text-[10px] text-slate-800 uppercase tracking-widest font-bold">Configure Discount Tiers</span>
+                          <span className="text-[9px] text-brand-green font-mono-custom">Local-First Dynamic Price Engine</span>
                         </div>
 
                         {/* Add Tier Form */}
@@ -2294,7 +2335,7 @@ function ProductsManagementView({
                               value={newVolumeQty}
                               onChange={(e) => setNewVolumeQty(e.target.value === '' ? '' : Number(e.target.value))}
                               placeholder="e.g. 50000"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 font-mono-custom focus:outline-none focus:border-brand-cyan"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 font-mono-custom focus:outline-none focus:border-brand-green"
                             />
                           </div>
                           <div className="space-y-1">
@@ -2305,13 +2346,13 @@ function ProductsManagementView({
                               value={newVolumePrice}
                               onChange={(e) => setNewVolumePrice(e.target.value === '' ? '' : Number(e.target.value))}
                               placeholder="e.g. 0.85"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 font-mono-custom focus:outline-none focus:border-brand-cyan"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 font-mono-custom focus:outline-none focus:border-brand-green"
                             />
                           </div>
                           <button
                             type="button"
                             onClick={addVolumeTier}
-                            className="py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded text-xs flex items-center justify-center gap-1 border border-slate-700 transition"
+                            className="py-2 bg-slate-100 hover:bg-slate-700 text-slate-800 font-bold rounded text-xs flex items-center justify-center gap-1 border border-slate-700 transition"
                           >
                             <PlusCircle className="w-3.5 h-3.5" /> Append Tier
                           </button>
@@ -2325,13 +2366,13 @@ function ProductsManagementView({
                           ) : (
                             <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
                               {formVolumePricing.map((tier, idx) => (
-                                <div key={idx} className="flex justify-between items-center text-xs p-2 bg-industrial-950 rounded border border-industrial-800 font-mono-custom">
+                                <div key={idx} className="flex justify-between items-center text-xs p-2 bg-slate-50 rounded border border-slate-200 font-mono-custom">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-[9px] bg-brand-cyan/15 text-brand-cyan py-0.5 px-1.5 rounded font-sans font-bold">Tier {idx+1}</span>
+                                    <span className="text-[9px] bg-brand-green/15 text-brand-green py-0.5 px-1.5 rounded font-sans font-bold">Tier {idx+1}</span>
                                     <span>Quantity &ge; {tier.qty.toLocaleString()} units</span>
                                   </div>
                                   <div className="flex items-center gap-3">
-                                    <span className="font-bold text-brand-cyan">₹{tier.price.toFixed(4)}</span>
+                                    <span className="font-bold text-brand-green">₹{tier.price.toFixed(4)}</span>
                                     <button 
                                       type="button"
                                       onClick={() => removeVolumeTier(idx)}
@@ -2364,27 +2405,27 @@ function ProductsManagementView({
                             value={formMaterial}
                             onChange={(e) => setFormMaterial(e.target.value)}
                             placeholder="e.g. Food Grade Polypropylene (PP)"
-                            className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                            className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                           />
                         </div>
 
                         {/* Custom printing availability */}
-                        <div className="flex items-center justify-between border border-industrial-800 p-2.5 rounded bg-industrial-900/60 mt-1">
+                        <div className="flex items-center justify-between border border-slate-200 p-2.5 rounded bg-white/60 mt-1">
                           <div>
-                            <span className="text-[10px] font-bold text-slate-350 uppercase block">Custom Printing Compatibility</span>
+                            <span className="text-[10px] font-bold text-slate-800 uppercase block">Custom Printing Compatibility</span>
                             <span className="text-[9px] text-slate-500">Enable brand graphic submissions</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => setFormCustomPrinting(!formCustomPrinting)}
-                            className={`w-9 h-5 rounded-full p-0.5 transition-colors ${formCustomPrinting ? 'bg-brand-cyan' : 'bg-slate-800'}`}
+                            className={`w-9 h-5 rounded-full p-0.5 transition-colors ${formCustomPrinting ? 'bg-brand-green' : 'bg-slate-100'}`}
                           >
                             <div className={`w-4 h-4 rounded-full bg-white transition-transform ${formCustomPrinting ? 'translate-x-4' : 'translate-x-0'}`} />
                           </button>
                         </div>
 
-                        <div className="sm:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3 border border-industrial-800 p-4 rounded-xl bg-industrial-900/40">
-                          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold col-span-2 sm:col-span-4 border-b border-industrial-800 pb-1.5">Product Dimensions Model</span>
+                        <div className="sm:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3 border border-slate-200 p-4 rounded-xl bg-white/40">
+                          <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold col-span-2 sm:col-span-4 border-b border-slate-200 pb-1.5">Product Dimensions Model</span>
                           
                           <div className="space-y-1">
                             <label className="text-[9px] text-slate-500 uppercase">Height (mm)</label>
@@ -2393,7 +2434,7 @@ function ProductsManagementView({
                               value={formHeight}
                               onChange={(e) => setFormHeight(e.target.value)}
                               placeholder="e.g. 50mm"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 outline-none"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 outline-none"
                             />
                           </div>
                           <div className="space-y-1">
@@ -2403,7 +2444,7 @@ function ProductsManagementView({
                               value={formTopDiameter}
                               onChange={(e) => setFormTopDiameter(e.target.value)}
                               placeholder="e.g. 70mm"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 outline-none"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 outline-none"
                             />
                           </div>
                           <div className="space-y-1">
@@ -2413,7 +2454,7 @@ function ProductsManagementView({
                               value={formBottomDiameter}
                               onChange={(e) => setFormBottomDiameter(e.target.value)}
                               placeholder="e.g. 50mm"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 outline-none"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 outline-none"
                             />
                           </div>
                           <div className="space-y-1">
@@ -2423,7 +2464,7 @@ function ProductsManagementView({
                               value={formWeight}
                               onChange={(e) => setFormWeight(e.target.value)}
                               placeholder="e.g. 2.8g"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 outline-none"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 outline-none"
                             />
                           </div>
 
@@ -2434,7 +2475,7 @@ function ProductsManagementView({
                               value={formLength}
                               onChange={(e) => setFormLength(e.target.value)}
                               placeholder="e.g. 93mm"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 outline-none"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 outline-none"
                             />
                           </div>
                           <div className="space-y-1">
@@ -2444,7 +2485,7 @@ function ProductsManagementView({
                               value={formWidth}
                               onChange={(e) => setFormWidth(e.target.value)}
                               placeholder="e.g. 10mm"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 outline-none"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 outline-none"
                             />
                           </div>
                           <div className="space-y-1">
@@ -2454,7 +2495,7 @@ function ProductsManagementView({
                               value={formThickness}
                               onChange={(e) => setFormThickness(e.target.value)}
                               placeholder="e.g. 2.0mm"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 outline-none"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 outline-none"
                             />
                           </div>
                           <div className="space-y-1">
@@ -2464,7 +2505,7 @@ function ProductsManagementView({
                               value={formSticks}
                               onChange={(e) => setFormSticks(e.target.value === '' ? '' : Number(e.target.value))}
                               placeholder="e.g. 40"
-                              className="w-full text-[11px] p-2 rounded bg-industrial-950 border border-industrial-800 text-slate-200 outline-none"
+                              className="w-full text-[11px] p-2 rounded bg-slate-50 border border-slate-200 text-slate-700 outline-none"
                             />
                           </div>
 
@@ -2477,7 +2518,7 @@ function ProductsManagementView({
                             value={formPackagingDetails}
                             onChange={(e) => setFormPackagingDetails(e.target.value)}
                             placeholder="e.g. 5,000 units per master carton, double shrink-wrapped"
-                            className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                            className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                           />
                         </div>
 
@@ -2488,7 +2529,7 @@ function ProductsManagementView({
                             value={formExportSpecifications}
                             onChange={(e) => setFormExportSpecifications(e.target.value)}
                             placeholder="e.g. HS Code: 39235010, certified FDA food grade"
-                            className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                            className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                           />
                         </div>
 
@@ -2504,36 +2545,36 @@ function ProductsManagementView({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         
                         {/* Featured boolean */}
-                        <div className="flex items-center justify-between border border-industrial-800 p-4 rounded-xl bg-industrial-900/60">
+                        <div className="flex items-center justify-between border border-slate-200 p-4 rounded-xl bg-white/60">
                           <div className="flex items-center gap-2">
                             <Star className="w-5 h-5 text-yellow-400 fill-current" />
                             <div>
-                              <span className="text-[10px] font-bold text-slate-350 uppercase block">Featured Spot</span>
+                              <span className="text-[10px] font-bold text-slate-800 uppercase block">Featured Spot</span>
                               <span className="text-[9px] text-slate-500">Showcase prominently on landing carousel</span>
                             </div>
                           </div>
                           <button
                             type="button"
                             onClick={() => setFormFeatured(!formFeatured)}
-                            className={`w-9 h-5 rounded-full p-0.5 transition-colors ${formFeatured ? 'bg-brand-cyan' : 'bg-slate-800'}`}
+                            className={`w-9 h-5 rounded-full p-0.5 transition-colors ${formFeatured ? 'bg-brand-green' : 'bg-slate-100'}`}
                           >
                             <div className={`w-4 h-4 rounded-full bg-white transition-transform ${formFeatured ? 'translate-x-4' : 'translate-x-0'}`} />
                           </button>
                         </div>
 
                         {/* Trending boolean */}
-                        <div className="flex items-center justify-between border border-industrial-800 p-4 rounded-xl bg-industrial-900/60">
+                        <div className="flex items-center justify-between border border-slate-200 p-4 rounded-xl bg-white/60">
                           <div className="flex items-center gap-2">
                             <Flame className="w-5 h-5 text-brand-orange fill-current" />
                             <div>
-                              <span className="text-[10px] font-bold text-slate-350 uppercase block">Trending Tag</span>
+                              <span className="text-[10px] font-bold text-slate-800 uppercase block">Trending Tag</span>
                               <span className="text-[9px] text-slate-500">Highlight as fast-moving procurement item</span>
                             </div>
                           </div>
                           <button
                             type="button"
                             onClick={() => setFormTrending(!formTrending)}
-                            className={`w-9 h-5 rounded-full p-0.5 transition-colors ${formTrending ? 'bg-brand-cyan' : 'bg-slate-800'}`}
+                            className={`w-9 h-5 rounded-full p-0.5 transition-colors ${formTrending ? 'bg-brand-green' : 'bg-slate-100'}`}
                           >
                             <div className={`w-4 h-4 rounded-full bg-white transition-transform ${formTrending ? 'translate-x-4' : 'translate-x-0'}`} />
                           </button>
@@ -2545,7 +2586,7 @@ function ProductsManagementView({
                           <select 
                             value={formStatus}
                             onChange={(e) => setFormStatus(e.target.value as any)}
-                            className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                            className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                           >
                             <option value="active">Active (Visible)</option>
                             <option value="hidden">Hidden from buyer lists</option>
@@ -2561,7 +2602,7 @@ function ProductsManagementView({
                             value={formTags}
                             onChange={(e) => setFormTags(e.target.value)}
                             placeholder="e.g. cups, ice cream, packaging, plastic"
-                            className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                            className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                           />
                         </div>
 
@@ -2581,22 +2622,22 @@ function ProductsManagementView({
                 {/* Dropzone frame */}
                 <div 
                   onClick={simulateImageUpload}
-                  className="border-2 border-dashed border-industrial-800 hover:border-brand-cyan/50 hover:bg-slate-900/40 p-6 rounded-2xl text-center cursor-pointer transition relative overflow-hidden group bg-slate-900/10 min-h-36 flex flex-col justify-center items-center"
+                  className="border-2 border-dashed border-slate-200 hover:border-brand-green/50 hover:bg-white/40 p-6 rounded-2xl text-center cursor-pointer transition relative overflow-hidden group bg-white/10 min-h-36 flex flex-col justify-center items-center"
                 >
                   {uploadingProgress !== null ? (
                     <div className="w-full space-y-2.5">
-                      <RefreshCw className="w-8 h-8 text-brand-cyan animate-spin mx-auto" />
-                      <p className="text-[10px] text-slate-450">Uploading simulated assets...</p>
+                      <RefreshCw className="w-8 h-8 text-brand-green animate-spin mx-auto" />
+                      <p className="text-[10px] text-slate-600">Uploading simulated assets...</p>
                       {/* Progress bar */}
-                      <div className="w-full bg-slate-800 rounded-full h-1">
-                        <div className="bg-brand-cyan h-1 rounded-full transition-all duration-300" style={{ width: `${uploadingProgress}%` }} />
+                      <div className="w-full bg-slate-100 rounded-full h-1">
+                        <div className="bg-brand-green h-1 rounded-full transition-all duration-300" style={{ width: `${uploadingProgress}%` }} />
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <UploadCloud className="w-8 h-8 text-slate-650 group-hover:text-brand-cyan group-hover:scale-105 transition duration-300 mx-auto" />
+                      <UploadCloud className="w-8 h-8 text-slate-650 group-hover:text-brand-green group-hover:scale-105 transition duration-300 mx-auto" />
                       <div>
-                        <p className="text-[11px] font-bold text-slate-300">Drag files here, or click</p>
+                        <p className="text-[11px] font-bold text-slate-800">Drag files here, or click</p>
                         <p className="text-[9px] text-slate-500 mt-0.5">Bucket: "product-assets"</p>
                       </div>
                     </div>
@@ -2608,19 +2649,19 @@ function ProductsManagementView({
                   <label className="text-[9px] text-slate-500 uppercase block font-semibold">Active Thumbnails ({imageUrls.length})</label>
                   
                   {imageUrls.length === 0 ? (
-                    <div className="p-4 border border-dashed border-industrial-800 rounded-xl text-center text-[10px] text-slate-500 italic bg-slate-900/5">
+                    <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center text-[10px] text-slate-500 italic bg-white/5">
                       No assets linked yet. Simulated placeholders will apply on save.
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
                       {imageUrls.map((url, idx) => (
-                        <div key={idx} className="relative group rounded-lg overflow-hidden border border-industrial-800 bg-slate-950 w-full pt-[100%]">
+                        <div key={idx} className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-50 w-full pt-[100%]">
                           <img src={url} alt={`Preview ${idx}`} className="absolute inset-0 w-full h-full object-cover" />
                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition duration-200">
                             <button
                               type="button"
                               onClick={() => removeImage(idx)}
-                              className="p-1 bg-red-650 hover:bg-red-500 text-white rounded transition"
+                              className="p-1 bg-red-650 hover:bg-red-500 text-slate-900 rounded transition"
                               title="Delete Image"
                             >
                               <X className="w-3.5 h-3.5" />
@@ -2638,7 +2679,7 @@ function ProductsManagementView({
             </form>
 
             {/* Modal Footer Controls */}
-            <div className="bg-industrial-900 px-6 py-4 border-t border-industrial-800 flex justify-between gap-3">
+            <div className="bg-white px-6 py-4 border-t border-slate-200 flex justify-between gap-3">
               <span className="text-[10px] text-slate-500 italic flex items-center">
                 * Required validation fields
               </span>
@@ -2646,14 +2687,14 @@ function ProductsManagementView({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-750 border border-slate-700/50 rounded-lg text-xs font-bold text-slate-800 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   onClick={handleSaveProduct}
-                  className="px-5 py-2 bg-brand-cyan hover:bg-cyan-400 text-slate-950 text-xs font-extrabold uppercase tracking-wider rounded-lg shadow-lg shadow-brand-cyan/5 transition cursor-pointer"
+                  className="px-5 py-2 bg-brand-green hover:bg-cyan-400 text-slate-950 text-xs font-extrabold uppercase tracking-wider rounded-lg shadow-lg shadow-brand-green/5 transition cursor-pointer"
                 >
                   Save Specifications
                 </button>
@@ -2686,7 +2727,7 @@ function PasswordInput({ className = '', ...props }: PasswordInputProps) {
       <button
         type="button"
         onClick={() => setShowPassword((prev) => !prev)}
-        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-300 transition cursor-pointer"
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-800 transition cursor-pointer"
         aria-label={showPassword ? 'Hide password' : 'Show password'}
         tabIndex={-1}
       >
@@ -2709,20 +2750,19 @@ function LoginPortal({ onLoginSuccess }: LoginPortalProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      const user = db.authenticateUser(email, password);
-      setIsLoading(false);
-      if (user) {
-        onLoginSuccess(user);
-      } else {
-        setError('Access Denied: Invalid email or security password.');
-      }
-    }, 850);
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    const user = await db.authenticateUser(email, password);
+    setIsLoading(false);
+    if (user) {
+      onLoginSuccess(user);
+    } else {
+      setError('Access Denied: Invalid email or security password.');
+    }
   };
 
   const loadDemo = (demoEmail: string, demoPass: string) => {
@@ -2732,30 +2772,30 @@ function LoginPortal({ onLoginSuccess }: LoginPortalProps) {
   };
 
   return (
-    <div className="min-h-screen bg-industrial-950 bg-grid-pattern text-slate-100 flex items-center justify-center p-4 font-sans relative overflow-hidden">
+    <div className="min-h-screen bg-slate-50 bg-grid-pattern text-slate-100 flex items-center justify-center p-4 font-sans relative overflow-hidden">
       {/* Ambient background glow points */}
-      <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-brand-cyan/10 blur-[120px] pointer-events-none" />
+      <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-brand-green/10 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-brand-orange/10 blur-[120px] pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10 space-y-6">
         
         {/* Terminal Title Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex p-3 bg-slate-900 border border-industrial-800 rounded-2xl shadow-inner mb-2">
-            <Layers className="w-8 h-8 text-brand-cyan animate-pulse" />
+          <div className="inline-flex p-3 bg-white border border-slate-200 rounded-2xl shadow-inner mb-2">
+            <Layers className="w-8 h-8 text-brand-green animate-pulse" />
           </div>
-          <h1 className="text-2xl font-black tracking-wider bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent uppercase leading-none">
+          <h1 className="text-2xl font-black tracking-wider bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent uppercase leading-none">
             AMAR INDUSTRIES ERP
           </h1>
-          <p className="text-[10px] tracking-widest text-brand-cyan uppercase font-bold font-mono-custom mt-1">
+          <p className="text-[10px] tracking-widest text-brand-green uppercase font-bold font-mono-custom mt-1">
             EXECUTIVE CONTROL PORTAL
           </p>
         </div>
 
         {/* Premium Glass Card */}
-        <div className="glass-panel-glow bg-slate-900/60 border border-slate-800/80 rounded-2xl p-8 shadow-2xl space-y-6">
-          <div className="border-b border-industrial-800 pb-4">
-            <h2 className="text-sm font-extrabold uppercase text-slate-300 tracking-wider">Security Access Console</h2>
+        <div className="glass-panel-glow bg-white/60 border border-slate-800/80 rounded-2xl p-8 shadow-2xl space-y-6">
+          <div className="border-b border-slate-200 pb-4">
+            <h2 className="text-sm font-extrabold uppercase text-slate-800 tracking-wider">Security Access Console</h2>
             <p className="text-[10px] text-slate-500 font-mono-custom mt-0.5">Please authorize active credentials</p>
           </div>
 
@@ -2768,7 +2808,7 @@ function LoginPortal({ onLoginSuccess }: LoginPortalProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="operations@amarsplints.com"
-                className="w-full text-xs p-3 rounded-lg bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none transition"
+                className="w-full text-xs p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none transition"
               />
             </div>
 
@@ -2779,7 +2819,7 @@ function LoginPortal({ onLoginSuccess }: LoginPortalProps) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••••••"
-                className="w-full text-xs p-3 rounded-lg bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none transition"
+                className="w-full text-xs p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none transition"
               />
             </div>
 
@@ -2793,7 +2833,7 @@ function LoginPortal({ onLoginSuccess }: LoginPortalProps) {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 bg-brand-cyan hover:bg-cyan-400 disabled:bg-cyan-950 disabled:text-cyan-800 text-slate-950 text-xs font-black uppercase tracking-widest rounded-lg transition duration-200 shadow-lg shadow-brand-cyan/15 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3 bg-brand-green hover:bg-cyan-400 disabled:bg-cyan-950 disabled:text-cyan-800 text-slate-950 text-xs font-black uppercase tracking-widest rounded-lg transition duration-200 shadow-lg shadow-brand-green/15 flex items-center justify-center gap-2 cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -2810,21 +2850,21 @@ function LoginPortal({ onLoginSuccess }: LoginPortalProps) {
           </form>
 
           {/* Quick Access Dev Bypass list */}
-          <div className="border-t border-industrial-800 pt-4 space-y-2.5">
+          <div className="border-t border-slate-200 pt-4 space-y-2.5">
             <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold block">Developer Bypass Accounts</span>
             <div className="grid grid-cols-2 gap-2 text-[10px]">
               <button
                 type="button"
                 onClick={() => loadDemo('supervisor@amarsplints.com', 'super123')}
-                className="py-2 bg-slate-900 border border-industrial-800 hover:border-slate-700 rounded-lg text-slate-300 text-left px-3 hover:text-white transition flex flex-col justify-center cursor-pointer"
+                className="py-2 bg-white border border-slate-200 hover:border-slate-700 rounded-lg text-slate-800 text-left px-3 hover:text-slate-900 transition flex flex-col justify-center cursor-pointer"
               >
-                <span className="font-bold text-xs text-brand-cyan leading-none">Rahul (Supervisor)</span>
+                <span className="font-bold text-xs text-brand-green leading-none">Rahul (Supervisor)</span>
                 <span className="text-[8px] text-slate-500 font-mono-custom mt-1">super123</span>
               </button>
               <button
                 type="button"
                 onClick={() => loadDemo('admin@amarsplints.com', 'admin123')}
-                className="py-2 bg-slate-900 border border-industrial-800 hover:border-slate-700 rounded-lg text-slate-300 text-left px-3 hover:text-white transition flex flex-col justify-center cursor-pointer"
+                className="py-2 bg-white border border-slate-200 hover:border-slate-700 rounded-lg text-slate-800 text-left px-3 hover:text-slate-900 transition flex flex-col justify-center cursor-pointer"
               >
                 <span className="font-bold text-xs text-brand-orange leading-none">Amarjit (Admin)</span>
                 <span className="text-[8px] text-slate-500 font-mono-custom mt-1">admin123</span>
@@ -3013,24 +3053,24 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
       
       {/* Toast Notification Layers */}
       {successMsg && (
-        <div className="fixed bottom-6 right-6 z-50 glass-panel-glow border-l-4 border-emerald-500 px-5 py-4 rounded-xl max-w-md shadow-2xl flex items-center justify-between gap-4 animate-slide-up bg-slate-900">
+        <div className="fixed bottom-6 right-6 z-50 glass-panel-glow border-l-4 border-emerald-500 px-5 py-4 rounded-xl max-w-md shadow-2xl flex items-center justify-between gap-4 animate-slide-up bg-white">
           <div className="flex items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 animate-bounce" />
-            <p className="text-xs font-semibold text-slate-200">{successMsg}</p>
+            <p className="text-xs font-semibold text-slate-700">{successMsg}</p>
           </div>
-          <button onClick={() => setSuccessMsg(null)} className="text-slate-400 hover:text-white transition">
+          <button onClick={() => setSuccessMsg(null)} className="text-slate-500 hover:text-slate-900 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
       {errorMsg && (
-        <div className="fixed bottom-6 right-6 z-50 glass-panel-glow border-l-4 border-red-500 px-5 py-4 rounded-xl max-w-md shadow-2xl flex items-center justify-between gap-4 animate-slide-up bg-slate-900">
+        <div className="fixed bottom-6 right-6 z-50 glass-panel-glow border-l-4 border-red-500 px-5 py-4 rounded-xl max-w-md shadow-2xl flex items-center justify-between gap-4 animate-slide-up bg-white">
           <div className="flex items-center gap-3">
             <ShieldAlert className="w-5 h-5 text-red-500 flex-shrink-0 animate-pulse" />
-            <p className="text-xs font-semibold text-slate-200">{errorMsg}</p>
+            <p className="text-xs font-semibold text-slate-700">{errorMsg}</p>
           </div>
-          <button onClick={() => setErrorMsg(null)} className="text-slate-400 hover:text-white transition">
+          <button onClick={() => setErrorMsg(null)} className="text-slate-500 hover:text-slate-900 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -3039,14 +3079,14 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
       {/* VIEW HEADER */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h3 className="text-xl font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
-            <Users className="w-5 h-5 text-brand-cyan animate-pulse" /> Enterprise Staff Directory
+          <h3 className="text-xl font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+            <Users className="w-5 h-5 text-brand-green animate-pulse" /> Enterprise Staff Directory
           </h3>
-          <p className="text-xs text-slate-400">Configure authorization levels, create new supervisors, and elevate staff roles.</p>
+          <p className="text-xs text-slate-500">Configure authorization levels, create new supervisors, and elevate staff roles.</p>
         </div>
         <button
           onClick={() => { setErrorMsg(null); setSuccessMsg(null); setIsModalOpen(true); }}
-          className="py-2.5 px-4 bg-brand-cyan hover:bg-cyan-400 text-slate-950 text-xs font-black uppercase tracking-wider rounded-lg flex items-center gap-1.5 shadow-lg shadow-brand-cyan/10 transition duration-200 cursor-pointer"
+          className="py-2.5 px-4 bg-brand-green hover:bg-cyan-400 text-slate-950 text-xs font-black uppercase tracking-wider rounded-lg flex items-center gap-1.5 shadow-lg shadow-brand-green/10 transition duration-200 cursor-pointer"
         >
           <Plus className="w-4 h-4" /> Register Staff Member
         </button>
@@ -3054,27 +3094,27 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
 
       {/* STATISTICS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="glass-panel p-5 rounded-xl bg-slate-900/30">
+        <div className="glass-panel p-5 rounded-xl bg-white/30">
           <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">Total Staff Accounts</span>
-          <h3 className="text-2xl font-extrabold text-white mt-1 font-mono-custom">{users.length}</h3>
+          <h3 className="text-2xl font-extrabold text-slate-900 mt-1 font-mono-custom">{users.length}</h3>
         </div>
-        <div className="glass-panel p-5 rounded-xl bg-slate-900/30">
+        <div className="glass-panel p-5 rounded-xl bg-white/30">
           <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">Active Administrators</span>
           <h3 className="text-2xl font-extrabold text-brand-orange mt-1 font-mono-custom">{totalAdmins}</h3>
         </div>
-        <div className="glass-panel p-5 rounded-xl bg-slate-900/30">
+        <div className="glass-panel p-5 rounded-xl bg-white/30">
           <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">Operations Supervisors</span>
-          <h3 className="text-2xl font-extrabold text-brand-cyan mt-1 font-mono-custom">{totalSupervisors}</h3>
+          <h3 className="text-2xl font-extrabold text-brand-green mt-1 font-mono-custom">{totalSupervisors}</h3>
         </div>
       </div>
 
       <EmailPreferences currentUser={currentUser} />
 
       {/* STAFF DIRECTORY TABLE GRID */}
-      <div className="glass-panel rounded-xl overflow-hidden bg-slate-900/30 border border-industrial-800">
+      <div className="glass-panel rounded-xl overflow-hidden bg-white/30 border border-slate-200">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-industrial-900 border-b border-industrial-800 text-slate-400 uppercase tracking-widest text-[9px] font-bold">
+            <tr className="bg-white border-b border-slate-200 text-slate-500 uppercase tracking-widest text-[9px] font-bold">
               <th className="p-4 pl-6">Employee Profile Name</th>
               <th className="p-4">Authorized Login Email</th>
               <th className="p-4">Privilege Clearance Role</th>
@@ -3086,26 +3126,26 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
             {users.map((staff) => {
               const isSelf = staff.id === currentUser.id;
               return (
-                <tr key={staff.id} className="hover:bg-slate-850/15 transition">
-                  <td className="p-4 pl-6 font-bold text-white">
+                <tr key={staff.id} className="hover:bg-slate-50/15 transition">
+                  <td className="p-4 pl-6 font-bold text-slate-900">
                     {staff.fullName}
                     {isSelf && (
-                      <span className="text-[8px] bg-brand-cyan/20 text-brand-cyan border border-brand-cyan/35 px-1.5 py-0.5 rounded font-mono-custom uppercase font-black tracking-widest ml-2.5">
+                      <span className="text-[8px] bg-brand-green/20 text-brand-green border border-brand-green/35 px-1.5 py-0.5 rounded font-mono-custom uppercase font-black tracking-widest ml-2.5">
                         ACTIVE SESSION
                       </span>
                     )}
                   </td>
-                  <td className="p-4 font-mono-custom text-slate-350">{staff.email}</td>
+                  <td className="p-4 font-mono-custom text-slate-800">{staff.email}</td>
                   <td className="p-4">
                     <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded border ${
                       staff.role === 'admin' 
                         ? 'bg-brand-orange/10 text-brand-orange border-brand-orange/20' 
-                        : 'bg-brand-cyan/10 text-brand-cyan border-brand-cyan/20'
+                        : 'bg-brand-green/10 text-brand-green border-brand-green/20'
                     }`}>
                       {staff.role}
                     </span>
                   </td>
-                  <td className="p-4 font-mono-custom text-slate-450">{new Date(staff.createdAt).toLocaleDateString()}</td>
+                  <td className="p-4 font-mono-custom text-slate-600">{new Date(staff.createdAt).toLocaleDateString()}</td>
                   <td className="p-4 text-right pr-6">
                     <div className="flex justify-end items-center gap-2">
                       
@@ -3126,7 +3166,7 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
                         disabled={isSelf}
                         className={`p-1.5 rounded transition border cursor-pointer ${
                           isSelf 
-                            ? 'bg-slate-800/10 border-slate-800 text-slate-600 cursor-not-allowed'
+                            ? 'bg-slate-100/10 border-slate-800 text-slate-600 cursor-not-allowed'
                             : 'bg-red-950/20 hover:bg-red-950/40 border-red-500/10 hover:border-red-500/30 text-red-400 hover:text-red-300'
                         }`}
                         title={isSelf ? "Self-deletion locked" : "Revoke employee access"}
@@ -3146,19 +3186,19 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
       {/* CREATE MODAL DIALOG SHEET */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-          <div className="glass-panel rounded-2xl w-full max-w-md overflow-hidden flex flex-col shadow-2xl border border-industrial-800 bg-slate-950">
+          <div className="glass-panel rounded-2xl w-full max-w-md overflow-hidden flex flex-col shadow-2xl border border-slate-200 bg-slate-50">
             
-            <div className="bg-industrial-900 px-6 py-4 border-b border-industrial-800 flex justify-between items-center">
+            <div className="bg-white px-6 py-4 border-b border-slate-200 flex justify-between items-center">
               <div>
-                <h4 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
-                  <PlusCircle className="w-4 h-4 text-brand-cyan animate-pulse" /> Register Active Staff Account
+                <h4 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <PlusCircle className="w-4 h-4 text-brand-green animate-pulse" /> Register Active Staff Account
                 </h4>
                 <p className="text-[10px] text-slate-500 font-mono-custom mt-0.5">Generate secure credentials for new personnel</p>
               </div>
               <button 
                 type="button" 
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3174,7 +3214,7 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Ramesh Kumar"
-                  className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                  className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                 />
               </div>
 
@@ -3186,7 +3226,7 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="e.g. ramesh@amarsplints.com"
-                  className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                  className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                 />
               </div>
 
@@ -3197,7 +3237,7 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Assign custom login password"
-                  className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                  className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                 />
               </div>
 
@@ -3206,24 +3246,24 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
                 <select 
                   value={role}
                   onChange={(e) => setRole(e.target.value as StaffRole)}
-                  className="w-full text-xs p-2.5 rounded bg-industrial-950 border border-industrial-800 text-slate-200 focus:border-brand-cyan outline-none"
+                  className="w-full text-xs p-2.5 rounded bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-green outline-none"
                 >
                   <option value="supervisor">Supervisor (Can accept inquiries & adjust inventory)</option>
                   <option value="admin">Administrator (Complete structural, product & user controls)</option>
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 border-t border-industrial-800 pt-4 mt-2">
+              <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 mt-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-750 border border-slate-700/50 rounded-lg text-xs font-bold text-slate-800 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-brand-cyan hover:bg-cyan-400 text-slate-950 text-xs font-extrabold uppercase tracking-wider rounded-lg shadow-lg shadow-brand-cyan/5 transition cursor-pointer"
+                  className="px-5 py-2 bg-brand-green hover:bg-cyan-400 text-slate-950 text-xs font-extrabold uppercase tracking-wider rounded-lg shadow-lg shadow-brand-green/5 transition cursor-pointer"
                 >
                   Save Profile Specs
                 </button>
@@ -3238,13 +3278,13 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
       {/* SECURITY RE-AUTHENTICATION OVERLAY */}
       {pendingAction && (
         <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
-          <div className="glass-panel-glow bg-slate-950/95 border border-industrial-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col p-6 space-y-5">
+          <div className="glass-panel-glow bg-slate-50/95 border border-slate-200 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col p-6 space-y-5">
             
             <div className="text-center space-y-2.5">
               <div className="inline-flex p-3 bg-red-950/20 border border-red-500/20 rounded-2xl text-brand-orange animate-pulse">
                 <ShieldAlert className="w-6 h-6" />
               </div>
-              <h4 className="text-sm font-black uppercase text-white tracking-widest">
+              <h4 className="text-sm font-black uppercase text-slate-900 tracking-widest">
                 Administrative Authorization
               </h4>
               <p className="text-[10px] text-slate-500 font-mono-custom">
@@ -3252,9 +3292,9 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
               </p>
             </div>
 
-            <div className="bg-industrial-900/60 p-3 rounded-lg border border-industrial-800 text-[10px] space-y-1">
+            <div className="bg-white/60 p-3 rounded-lg border border-slate-200 text-[10px] space-y-1">
               <span className="text-slate-500 uppercase block font-semibold">Clearance Operation</span>
-              <p className="text-slate-350 leading-relaxed font-semibold">
+              <p className="text-slate-800 leading-relaxed font-semibold">
                 {pendingAction.type === 'add' && `Create supervisor/admin profile "${pendingAction.targetName}"`}
                 {pendingAction.type === 'delete' && `Revoke access permissions for "${pendingAction.targetName}"`}
                 {pendingAction.type === 'promote' && `Promote "${pendingAction.targetName}" to ERP Administrator role`}
@@ -3270,7 +3310,7 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Input password to verify credentials"
-                  className="w-full text-xs p-3 rounded-lg bg-industrial-950 border border-industrial-850 text-slate-200 focus:border-brand-orange outline-none transition"
+                  className="w-full text-xs p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:border-brand-orange outline-none transition"
                 />
               </div>
 
@@ -3284,13 +3324,13 @@ function StaffManagementView({ currentUser, onStaffChange }: StaffManagementView
                 <button
                   type="button"
                   onClick={() => { setPendingAction(null); setConfirmPassword(''); setConfirmError(null); }}
-                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 rounded-lg text-xs font-bold text-slate-350 transition cursor-pointer"
+                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-750 border border-slate-700/50 rounded-lg text-xs font-bold text-slate-800 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 bg-brand-orange hover:bg-orange-500 text-white text-xs font-black uppercase tracking-wider rounded-lg shadow-lg shadow-brand-orange/15 transition cursor-pointer"
+                  className="flex-1 py-2 bg-brand-orange hover:bg-orange-500 text-slate-900 text-xs font-black uppercase tracking-wider rounded-lg shadow-lg shadow-brand-orange/15 transition cursor-pointer"
                 >
                   Confirm Clearance
                 </button>

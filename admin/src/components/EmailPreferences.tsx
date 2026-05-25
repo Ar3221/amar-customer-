@@ -46,7 +46,7 @@ export function EmailPreferences({ currentUser }: EmailPreferencesProps) {
         const { data } = await supabase
           .from('email_preferences')
           .select('*')
-          .eq('user_id', currentUser.id)
+          .eq('public_user_id', currentUser.id)
           .maybeSingle();
         if (data) {
           setPrefs({
@@ -72,7 +72,7 @@ export function EmailPreferences({ currentUser }: EmailPreferencesProps) {
   const handleSave = async () => {
     if (isSupabaseConfigured && supabase) {
       await supabase.from('email_preferences').upsert({
-        user_id: currentUser.id,
+        public_user_id: currentUser.id,
         ...prefs,
         updated_at: new Date().toISOString(),
       });

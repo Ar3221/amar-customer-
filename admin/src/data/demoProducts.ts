@@ -192,6 +192,7 @@ function buildProduct(index: number, line: CatalogLine, name: string, variant: n
     views: 200 + (index * 47) % 3000,
     ordersCount: 5 + (index * 3) % 120,
     createdAt: `2026-${String(1 + (index % 5)).padStart(2, '0')}-${String(1 + (index % 28)).padStart(2, '0')}T12:00:00Z`,
+    brochureUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
   };
 }
 

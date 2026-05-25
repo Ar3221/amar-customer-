@@ -2,10 +2,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 @theme {
-  --color-brand-dark: #0f172a;
-  --color-brand-card: #1e293b;
-  --color-brand-border: #334155;
-  --color-brand-accent: #0ea5e9;
+  --color-brand-light: #ffffff;
+  --color-brand-card: #f8fafc;
+  --color-brand-border: #e2e8f0;
+  --color-brand-accent: #10b981; /* Green accent from mockup */
   --color-brand-green: #10b981;
   --color-brand-amber: #f59e0b;
 }
@@ -15,45 +15,45 @@ body {
   font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #0f172a; /* Slate 900 */
-  color: #f1f5f9; /* Slate 100 */
+  background-color: #f8fafc; /* Slate 50 */
+  color: #0f172a; /* Slate 900 */
 }
 
-/* Premium dark card aesthetics for global export platform */
+/* Premium light card aesthetics */
 .portal-card {
-  background: rgba(30, 41, 59, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 0.75rem;
 }
 
 .portal-card:hover {
-  border-color: rgba(14, 165, 233, 0.3);
-  box-shadow: 0 15px 35px -5px rgba(14, 165, 233, 0.08);
+  border-color: #10b981;
+  box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.1), 0 8px 10px -6px rgba(16, 185, 129, 0.1);
+  transform: translateY(-2px);
 }
 
-/* Dynamic glow inputs */
+/* Dynamic inputs */
 .portal-input {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #f8fafc;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
   transition: all 0.2s ease-in-out;
 }
 
 .portal-input:focus {
-  border-color: #0ea5e9;
-  box-shadow: 0 0 10px rgba(14, 165, 233, 0.2);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
   outline: none;
 }
 
-/* Soft industrial background shapes */
+/* Very subtle grid background for light theme */
 .bg-grid-glow {
   background-size: 50px 50px;
   background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.01) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
+    linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
 }
 
 /* Hide scrollbar defaults */
@@ -63,14 +63,14 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #f1f5f9;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #cbd5e1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #94a3b8;
 }
